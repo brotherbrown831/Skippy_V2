@@ -1,0 +1,32 @@
+[project]
+name = "skippy"
+version = "2.0.0"
+description = "Skippy AI Personal Assistant - LangGraph Agent"
+requires-python = ">=3.12"
+dependencies = [
+    "langgraph>=0.3",
+    "langchain-openai>=0.3",
+    "langchain-core>=0.3",
+    "langgraph-checkpoint-postgres>=2.0",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "psycopg[binary,pool]>=3.2",
+    "pgvector>=0.3",
+    "pydantic-settings>=2.7",
+    "httpx>=0.28",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.9",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.25",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
