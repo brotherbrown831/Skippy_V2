@@ -90,11 +90,9 @@ class ResponsesAPILLM(BaseChatModel):
             "max_output_tokens": self.max_output_tokens,
         }
 
-        # Add tools if bound
-        if self.tools:
-            api_kwargs["tools"] = [
-                convert_to_openai_tool(tool) for tool in self.tools
-            ]
+        # Note: Tools are not passed to Responses API in this implementation
+        # Tool handling is managed by LangGraph's tool execution layer
+        # (similar to how ChatOpenAI works with bind_tools)
 
         # Merge any additional kwargs
         api_kwargs.update(kwargs)
