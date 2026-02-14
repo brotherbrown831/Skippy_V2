@@ -12,17 +12,19 @@ What's already working:
 - PostgreSQL 17 + pgvector semantic memory (store, retrieve, dedup)
 - langgraph-checkpoint-postgres for conversation persistence
 - Home Assistant voice integration via Wyoming satellites
+- **Telegram bot** with long-polling (receive + send messages)
 - Docker Compose deployment with dev hot-reload
 - Sarcastic Skippy personality with voice/chat modes
 - Google Calendar integration (read/write via service account)
 - Gmail integration (read inbox, search, send, reply via OAuth2)
 - Google Contacts integration (search, view, create, update via OAuth2)
+- **Google Contacts → People table sync** (daily at 2 AM + on-demand)
 - Push notifications via HA Companion app
 - SMS notifications via Twilio
-- APScheduler task engine (recurring tasks, one-time reminders, timers)
-- Structured people database with auto-extraction from conversations
+- APScheduler task engine (recurring tasks, one-time reminders, timers, direct-function routines)
+- Structured people database with auto-extraction + Google Contacts sync
 - Unified Memory Bank web dashboard (semantic memories + people)
-- 26 tools across 6 modules
+- 28 tools across 8 modules
 
 ---
 
@@ -36,6 +38,7 @@ What's already working:
 - People table (name, birthday, address, relationship, phone, email, notes)
 - 5 CRUD tools (add, get, search, update, list)
 - Auto-extraction: memory evaluator detects person/family facts and upserts into people table
+- **Google Contacts sync**: daily auto-sync at 2 AM + on-demand `sync_contacts_now` tool (253 contacts imported)
 - Unified Memory Bank web dashboard with tabbed view
 
 **Remaining:**
@@ -67,12 +70,13 @@ What's already working:
 |-------|---------|--------|
 | Push notification | HA Companion app | ✅ Working (phone-side reconnect needed) |
 | SMS | Twilio | ✅ Working |
+| Telegram | Long-polling bot | ✅ Working |
 
 **Remaining:**
 - Acknowledgement tracking
 - Escalation delay logic (repeat until acknowledged)
 - Quiet hours logic
-- Priority-based channel selection (auto-escalate from push → SMS)
+- Priority-based channel selection (auto-escalate from push → SMS → Telegram)
 
 ---
 

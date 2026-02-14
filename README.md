@@ -64,7 +64,7 @@ An AI personal assistant with long-term semantic memory, built with LangGraph, F
 | Telegram | Telegram Bot API (long polling) |
 | Deployment | Docker Compose |
 
-## Tools (26 total)
+## Tools (28 total)
 
 | Module | Tools | Description |
 |--------|-------|-------------|
@@ -74,7 +74,8 @@ An AI personal assistant with long-term semantic memory, built with LangGraph, F
 | `google_contacts` | 4 | Search, view, create, update contacts |
 | `scheduler` | 4 | Recurring tasks, reminders, timers |
 | `people` | 5 | Structured people database CRUD |
-| `telegram` | 1 | Send Telegram messages |
+| `contact_sync` | 1 | Google Contacts → People table sync (on-demand + scheduled) |
+| `telegram` | 1 | Receive messages via polling, send notifications |
 
 ## Project Structure
 
