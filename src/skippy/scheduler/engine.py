@@ -1,5 +1,7 @@
 """Scheduler engine — APScheduler setup, startup, and shutdown."""
 
+import asyncio
+import importlib
 import json
 import logging
 
@@ -10,7 +12,7 @@ from apscheduler.triggers.date import DateTrigger
 
 from skippy.config import settings
 from skippy.scheduler.executor import run_scheduled_task
-from skippy.scheduler.routines import PREDEFINED_ROUTINES
+from skippy.scheduler.routines import DIRECT_ROUTINES, PREDEFINED_ROUTINES
 
 logger = logging.getLogger("skippy")
 
@@ -54,6 +56,20 @@ async def _restore_chat_tasks(scheduler: AsyncIOScheduler, pool) -> int:
     return count
 
 
+def _resolve_func(func_path: str):
+    """Resolve a 'module.path:function_name' string to a callable."""
+    module_path, func_name = func_path.rsplit(":", 1)
+    module = importlib.import_module(module_path)
+    return getattr(module, func_name)
+
+
+def _run_async_func(func_path: str):
+    """Wrapper that resolves and runs an async function from APScheduler."""
+    func = _resolve_func(func_path)
+    loop = asyncio.get_event_loop()
+    return loop.create_task(func())
+
+
 def _register_predefined_routines(scheduler: AsyncIOScheduler) -> int:
     """Register predefined routines with the scheduler."""
     count = 0
@@ -71,6 +87,23 @@ def _register_predefined_routines(scheduler: AsyncIOScheduler) -> int:
             logger.info("Registered predefined routine: %s", routine["name"])
         except Exception:
             logger.exception("Failed to register routine '%s'", routine["name"])
+
+    # Register direct-function routines (no agent graph, just call the function)
+    for routine in DIRECT_ROUTINES:
+        try:
+            scheduler.add_job(
+                _run_async_func,
+                trigger=routine["trigger"],
+                id=routine["task_id"],
+                name=routine["name"],
+                args=[routine["func"]],
+                replace_existing=True,
+            )
+            count += 1
+            logger.info("Registered direct routine: %s", routine["name"])
+        except Exception:
+            logger.exception("Failed to register direct routine '%s'", routine["name"])
+
     return count
 
 

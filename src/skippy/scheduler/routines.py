@@ -40,3 +40,14 @@ PREDEFINED_ROUTINES = [
         "trigger": IntervalTrigger(minutes=30),
     },
 ]
+
+# Direct-function routines — these call a function directly instead of
+# going through the agent graph (no LLM call needed for data sync jobs).
+DIRECT_ROUTINES = [
+    {
+        "task_id": "google-contacts-sync",
+        "name": "Google Contacts Sync",
+        "func": "skippy.tools.contact_sync:sync_google_contacts_to_people",
+        "trigger": CronTrigger(hour=2, minute=0, timezone=settings.timezone),
+    },
+]
