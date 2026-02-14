@@ -43,6 +43,8 @@ async def _handle_update(app, client: httpx.AsyncClient, update: dict, allowed: 
     if chat_id is None:
         return
 
+    logger.info("Telegram message received from chat_id=%s, text=%s", chat_id, text[:50])
+
     if allowed is not None and chat_id not in allowed:
         logger.warning("Ignoring Telegram message from unauthorized chat_id=%s", chat_id)
         return
