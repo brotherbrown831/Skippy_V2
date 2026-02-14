@@ -43,8 +43,12 @@ async def execute_scheduled_task(task_id: str, prompt: str) -> str:
 
 def run_scheduled_task(task_id: str, prompt: str) -> None:
     """Sync wrapper for APScheduler to call — runs the async executor."""
-    loop = asyncio.get_event_loop()
-    if loop.is_running():
-        asyncio.ensure_future(execute_scheduled_task(task_id, prompt))
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        loop.create_task(execute_scheduled_task(task_id, prompt))
     else:
-        loop.run_until_complete(execute_scheduled_task(task_id, prompt))
+        asyncio.run(execute_scheduled_task(task_id, prompt))
