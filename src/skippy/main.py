@@ -15,6 +15,7 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from skippy.agent.graph import build_graph
 from skippy.config import settings
 from skippy.scheduler import start_scheduler, stop_scheduler
+from skippy.telegram import start_telegram, stop_telegram
 from skippy.web.memories import router as memories_router
 from skippy.web.people import router as people_router
 
@@ -98,7 +99,9 @@ async def lifespan(app: FastAPI):
         app.state.graph = await build_graph(checkpointer)
         logger.info("Skippy agent ready")
         await start_scheduler(app)
+        await start_telegram(app)
         yield
+        await stop_telegram(app)
         await stop_scheduler(app)
     # Shutdown
     await app.state.pool.close()

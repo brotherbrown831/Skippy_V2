@@ -61,6 +61,7 @@ An AI personal assistant with long-term semantic memory, built with LangGraph, F
 | Scheduler | APScheduler 3.x |
 | SMS | Twilio |
 | Google APIs | Calendar (service account), Gmail + Contacts (OAuth2) |
+| Telegram | Telegram Bot API (long polling) |
 | Deployment | Docker Compose |
 
 ## Tools (26 total)
@@ -235,6 +236,15 @@ In OpenWebUI, add a new connection:
 - **Model name:** `skippy`
 - **API Key:** anything (not validated)
 
+### 9. Connect Telegram (Optional)
+
+1. Create a bot with @BotFather and get the token
+2. Set `TELEGRAM_BOT_TOKEN` in `.env`
+3. (Optional) Set `TELEGRAM_ALLOWED_CHAT_IDS` to restrict who can talk to Skippy
+4. Restart the stack (`docker compose up -d`)
+
+Skippy uses long polling, so no public webhook is required.
+
 ## API Endpoints
 
 | Endpoint | Method | Description |
@@ -302,6 +312,11 @@ All configuration is via environment variables (`.env` file):
 | `TWILIO_AUTH_TOKEN` | Twilio Auth Token | empty |
 | `TWILIO_FROM_NUMBER` | Twilio phone number (e.g., +15551234567) | empty |
 | `TWILIO_TO_NUMBER` | Your phone number | empty |
+| `TELEGRAM_BOT_TOKEN` | Telegram bot token | empty |
+| `TELEGRAM_ALLOWED_CHAT_IDS` | Comma-separated allowed chat IDs | empty |
+| `TELEGRAM_POLL_INTERVAL` | Polling backoff seconds | `2` |
+| `TELEGRAM_LONG_POLL_TIMEOUT` | Long polling timeout seconds | `20` |
+| `TELEGRAM_API_BASE` | Telegram API base URL | `https://api.telegram.org` |
 | `GOOGLE_CALENDAR_ID` | Google Calendar ID | empty |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | Path to service account JSON | empty |
 | `GOOGLE_OAUTH_CLIENT_JSON` | Path to OAuth2 client credentials | empty |

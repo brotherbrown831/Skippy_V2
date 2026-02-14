@@ -27,6 +27,13 @@ class Settings(BaseSettings):
     # Scheduler
     scheduler_enabled: bool = True
 
+    # Telegram
+    telegram_bot_token: str = ""
+    telegram_allowed_chat_ids: str = ""
+    telegram_poll_interval: int = 2
+    telegram_long_poll_timeout: int = 20
+    telegram_api_base: str = "https://api.telegram.org"
+
     # Google Calendar
     google_calendar_id: str = ""
     google_service_account_json: str = ""

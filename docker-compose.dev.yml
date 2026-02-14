@@ -1,8 +1,10 @@
 services:
   skippy:
     build: .
+    env_file: .env
+    working_dir: /app/src
     volumes:
       - ./src:/app/src
-    command: uvicorn skippy.main:app --reload --host 0.0.0.0 --port 8000
+    command: uvicorn skippy.main:app --reload --host 0.0.0.0 --port 8000 --app-dir /app/src
     environment:
       - LOG_LEVEL=debug

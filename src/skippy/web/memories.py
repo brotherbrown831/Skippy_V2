@@ -104,7 +104,7 @@ MEMORIES_PAGE_HTML = """\
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Skippy — Memory Bank</title>
+<title>Skippy's Memory Search</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -192,7 +192,7 @@ MEMORIES_PAGE_HTML = """\
 </style>
 </head>
 <body>
-<h1>Skippy's Memory Bank</h1>
+<h1>Skippy's Memory Search</h1>
 <p class="subtitle">All the things this magnificent AI remembers about you monkeys.</p>
 
 <div class="tabs">
