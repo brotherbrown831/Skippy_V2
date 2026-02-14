@@ -1,10 +1,13 @@
 """Custom LangChain LLM wrapper for OpenAI Responses API."""
 
+import asyncio
 from typing import Any, List, Optional
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage, AIMessage, SystemMessage, HumanMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.callbacks import CallbackManagerForLLMRun
+from langchain_core.tools import BaseTool
+from langchain_core.utils.function_calling import convert_to_openai_tool
 from openai import AsyncOpenAI
 from pydantic import Field
 
@@ -20,6 +23,7 @@ class ResponsesAPILLM(BaseChatModel):
     model: str = "gpt-4o-mini"
     temperature: float = 0.7
     max_completion_tokens: Optional[int] = None
+    tools: Optional[List[BaseTool]] = None
 
     class Config:
         """Pydantic configuration."""
@@ -28,6 +32,14 @@ class ResponsesAPILLM(BaseChatModel):
     @property
     def _llm_type(self) -> str:
         return "openai-responses"
+
+    def bind_tools(
+        self,
+        tools: List[BaseTool],
+        **kwargs: Any,
+    ) -> "ResponsesAPILLM":
+        """Bind tools to the LLM."""
+        return self.model_copy(update={"tools": tools})
 
     def _convert_messages(
         self, messages: List[BaseMessage]
@@ -69,14 +81,25 @@ class ResponsesAPILLM(BaseChatModel):
         """Generate response using Responses API."""
         instructions, input_data = self._convert_messages(messages)
 
-        response = await self.client.responses.create(
-            model=self.model,
-            instructions=instructions if instructions else None,
-            input=input_data,
-            temperature=self.temperature,
-            max_completion_tokens=self.max_completion_tokens,
-            **kwargs
-        )
+        # Build API call kwargs
+        api_kwargs = {
+            "model": self.model,
+            "instructions": instructions if instructions else None,
+            "input": input_data,
+            "temperature": self.temperature,
+            "max_completion_tokens": self.max_completion_tokens,
+        }
+
+        # Add tools if bound
+        if self.tools:
+            api_kwargs["tools"] = [
+                convert_to_openai_tool(tool) for tool in self.tools
+            ]
+
+        # Merge any additional kwargs
+        api_kwargs.update(kwargs)
+
+        response = await self.client.responses.create(**api_kwargs)
 
         message = AIMessage(content=response.output_text)
         generation = ChatGeneration(message=message)
@@ -90,5 +113,19 @@ class ResponsesAPILLM(BaseChatModel):
         run_manager: Optional[CallbackManagerForLLMRun] = None,
         **kwargs: Any,
     ) -> ChatResult:
-        """Sync version - not implemented as we use async."""
-        raise NotImplementedError("Use ainvoke for async operation")
+        """Sync version - wraps async call."""
+        try:
+            # Try to get the running event loop
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop - we're in a sync context
+            return asyncio.run(
+                self._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
+            )
+        else:
+            # We're already in an async context - this shouldn't happen
+            # but handle it gracefully by raising a more informative error
+            raise RuntimeError(
+                "Cannot use sync _generate() from within an async context. "
+                "Use await llm.ainvoke() instead."
+            )
