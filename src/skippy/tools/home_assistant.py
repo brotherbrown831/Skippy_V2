@@ -1,12 +1,8 @@
-"""Home Assistant tools for Skippy.
+"""Outbound notification tools for Skippy.
 
-Currently implements:
-  - send_notification: Push notifications to a mobile device via HA Companion app
-
-Uses the Home Assistant REST API via httpx:
-  POST {HA_URL}/api/services/notify/{service}
-
-Auth: Bearer token via settings.ha_token
+Implements:
+  - send_notification: Push notifications via HA Companion app
+  - send_sms: SMS text messages via Twilio
 """
 
 import logging
@@ -53,8 +49,37 @@ def send_notification(message: str, title: str = "Skippy") -> str:
         return f"Failed to send notification: {e}"
 
 
+@tool
+def send_sms(message: str) -> str:
+    """Send an SMS text message to the user's phone via Twilio. Use this for
+    important or urgent messages, or when push notifications aren't reliable.
+    Prefer send_notification for routine alerts and send_sms for higher-priority items.
+
+    Args:
+        message: The text message to send.
+    """
+    try:
+        from twilio.rest import Client
+
+        client = Client(settings.twilio_account_sid, settings.twilio_auth_token)
+        sms = client.messages.create(
+            body=message,
+            from_=settings.twilio_from_number,
+            to=settings.twilio_to_number,
+        )
+
+        logger.info("SMS sent: sid=%s to=%s", sms.sid, settings.twilio_to_number)
+        return f"SMS sent successfully to {settings.twilio_to_number}: '{message}'"
+    except Exception as e:
+        logger.error("SMS failed: %s", e)
+        return f"Failed to send SMS: {e}"
+
+
 def get_tools() -> list:
-    """Return HA tools if configured."""
+    """Return notification tools based on what's configured."""
+    tools = []
     if settings.ha_token and settings.ha_notify_service:
-        return [send_notification]
-    return []
+        tools.append(send_notification)
+    if settings.twilio_account_sid and settings.twilio_auth_token:
+        tools.append(send_sms)
+    return tools

@@ -26,6 +26,23 @@ CREATE INDEX IF NOT EXISTS idx_memories_user_status
     ON semantic_memories (user_id, status)
     WHERE status = 'active';
 
+-- Structured people data (Phase 1.1)
+CREATE TABLE IF NOT EXISTS people (
+    person_id SERIAL PRIMARY KEY,
+    user_id TEXT NOT NULL DEFAULT 'nolan',
+    name TEXT NOT NULL,
+    relationship TEXT,
+    birthday TEXT,
+    address TEXT,
+    phone TEXT,
+    email TEXT,
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_people_user ON people (user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_people_name_user ON people (user_id, LOWER(name));
+
 -- Scheduled tasks (chat-created and predefined)
 CREATE TABLE IF NOT EXISTS scheduled_tasks (
     task_id TEXT PRIMARY KEY,

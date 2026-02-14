@@ -14,65 +14,65 @@ What's already working:
 - Home Assistant voice integration via Wyoming satellites
 - Docker Compose deployment with dev hot-reload
 - Sarcastic Skippy personality with voice/chat modes
-
-**Immediate next task:** Implement Home Assistant tool functions (entity control, sensor queries, scenes) — the graph is already wired for tools, just needs the implementations in `src/skippy/tools/home_assistant.py`.
+- Google Calendar integration (read/write via service account)
+- Gmail integration (read inbox, search, send, reply via OAuth2)
+- Google Contacts integration (search, view, create, update via OAuth2)
+- Push notifications via HA Companion app
+- SMS notifications via Twilio
+- APScheduler task engine (recurring tasks, one-time reminders, timers)
+- Structured people database with auto-extraction from conversations
+- Unified Memory Bank web dashboard (semantic memories + people)
+- 26 tools across 6 modules
 
 ---
 
 ## Phase 1 — Foundation (Make the Brain Reliable)
 
-### 1. Structured Life Data Layer
+### 1. Structured Life Data Layer ✅
 
-Move beyond vector-only memory. Add relational tables for structured facts that must be precise and queryable — not probabilistic.
+~~Move beyond vector-only memory.~~ Done — `people` table with CRUD tools + auto-extraction from conversations.
 
-**Tables to add:**
-- People (name, birthday, address, relationship)
-- Events (holiday, recurring, one-time)
-- Gifts (person, date, item)
-- Important dates
-- Locations
+**Completed:**
+- People table (name, birthday, address, relationship, phone, email, notes)
+- 5 CRUD tools (add, get, search, update, list)
+- Auto-extraction: memory evaluator detects person/family facts and upserts into people table
+- Unified Memory Bank web dashboard with tabbed view
 
-Keep pgvector for unstructured/conversational memory. Use relational tables for anything that needs exact recall.
+**Remaining:**
+- Events table (holiday, recurring, one-time)
+- Gifts table (person, date, item)
+- Locations table
 
-**Why first?** Because "What did I get Mike last Christmas?" must never rely on embeddings.
+### 2. Task & Reminder Engine ✅
 
-### 2. Task & Reminder Engine
+~~Build a proper scheduler system.~~ Done — APScheduler with database persistence.
 
-Build a proper scheduler system for core assistant behavior.
+**Completed:**
+- One-time reminders (`set_reminder` tool)
+- Recurring tasks (`create_scheduled_task` tool)
+- Timer support (relative delays like "10 minutes")
+- Predefined routines (Morning Briefing, Evening Summary, Event Reminder)
+- Database-backed task persistence with restore on restart
 
-**Capabilities:**
-- One-time reminders
-- Recurring reminders
+**Remaining:**
 - Escalating reminders (repeat until acknowledged)
-- Timers
 - Shopping list as structured tasks
 
-**Requires:**
-- Background worker (async task runner)
-- Task persistence (database-backed)
+### 3. Notification & Escalation System ✅ (partial)
+
+~~Outbound communication channels.~~ Push + SMS done.
+
+**Completed:**
+| Level | Channel | Status |
+|-------|---------|--------|
+| Push notification | HA Companion app | ✅ Working (phone-side reconnect needed) |
+| SMS | Twilio | ✅ Working |
+
+**Remaining:**
 - Acknowledgement tracking
-
-**Unlocks:**
-- "Remind me in 2 hours"
-- "Add milk to shopping list"
-- "Remind me every first Monday"
-
-### 3. Notification & Escalation System
-
-Outbound communication channels with priority levels. This is what makes Skippy proactive instead of reactive.
-
-**Priority levels:**
-| Level | Action |
-|-------|--------|
-| Store only | Log it, no notification |
-| Push notification | HA mobile app / browser push |
-| SMS | Text message for important items |
-| Critical | Repeat until acknowledged |
-
-**Requires:**
-- Acknowledgement tracking
-- Escalation delay logic
+- Escalation delay logic (repeat until acknowledged)
 - Quiet hours logic
+- Priority-based channel selection (auto-escalate from push → SMS)
 
 ---
 
@@ -177,9 +177,9 @@ Periodic self-analysis to increase long-term usefulness.
 
 ## Phase 4 — Expansion
 
-### 10. Calendar Deep Integration
+### 10. Calendar Deep Integration (partially done)
 
-Full read/write access to calendar with:
+Full read/write access ✅ — 6 calendar tools via service account. Remaining:
 - Conflict detection
 - Suggestion engine ("You have a gap Tuesday afternoon")
 - Auto-scheduling based on priorities

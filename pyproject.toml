@@ -16,8 +16,10 @@ dependencies = [
     "httpx>=0.28",
     "google-api-python-client>=2.100",
     "google-auth>=2.25",
+    "google-auth-oauthlib>=1.2",
     "apscheduler>=3.10,<4",
     "sqlalchemy>=2.0",
+    "twilio>=9.0",
 ]
 
 [project.optional-dependencies]

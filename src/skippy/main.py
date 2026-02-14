@@ -16,6 +16,7 @@ from skippy.agent.graph import build_graph
 from skippy.config import settings
 from skippy.scheduler import start_scheduler, stop_scheduler
 from skippy.web.memories import router as memories_router
+from skippy.web.people import router as people_router
 
 logger = logging.getLogger("skippy")
 
@@ -105,6 +106,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Skippy", version="2.0.0", lifespan=lifespan)
 app.include_router(memories_router)
+app.include_router(people_router)
 
 
 # --- Endpoints ---

@@ -4,7 +4,7 @@ import logging
 from openai import AsyncOpenAI
 import psycopg
 
-from skippy.agent.prompts import MEMORY_EVALUATION_PROMPT
+from skippy.agent.prompts import MEMORY_EVALUATION_PROMPT, PERSON_EXTRACTION_PROMPT
 from skippy.config import settings
 
 logger = logging.getLogger("skippy")
@@ -123,6 +123,85 @@ async def evaluate_and_store(
             )
             result = await cur.fetchone()
             logger.info("New memory stored: id=%s content='%s'", result[0], result[1][:50])
+
+    # Step 5: If person/family category, also upsert into structured people table
+    if category in ("person", "family"):
+        try:
+            await _extract_and_store_person(client, extracted_fact, user_id)
+        except Exception:
+            logger.exception("Failed to auto-extract person data")
+
+
+async def _extract_and_store_person(
+    client: AsyncOpenAI,
+    extracted_fact: str,
+    user_id: str,
+) -> None:
+    """Extract structured person fields from a fact and upsert into the people table."""
+    try:
+        response = await client.chat.completions.create(
+            model=settings.llm_model,
+            messages=[
+                {"role": "system", "content": PERSON_EXTRACTION_PROMPT},
+                {"role": "user", "content": extracted_fact},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.1,
+        )
+        data = json.loads(response.choices[0].message.content)
+    except Exception:
+        logger.exception("Failed to extract person fields from fact")
+        return
+
+    name = data.get("name", "").strip()
+    if not name:
+        logger.debug("Person extraction: no name found in fact")
+        return
+
+    # Build upsert — only update non-empty fields
+    fields = {
+        "relationship": data.get("relationship", ""),
+        "birthday": data.get("birthday", ""),
+        "address": data.get("address", ""),
+        "phone": data.get("phone", ""),
+        "email": data.get("email", ""),
+        "notes": data.get("notes", ""),
+    }
+
+    updates = []
+    for field, val in fields.items():
+        if val:
+            updates.append(f"{field} = EXCLUDED.{field}")
+    updates.append("updated_at = NOW()")
+    set_clause = ", ".join(updates)
+
+    try:
+        async with await psycopg.AsyncConnection.connect(
+            settings.database_url, autocommit=True
+        ) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    f"""
+                    INSERT INTO people (user_id, name, relationship, birthday, address, phone, email, notes)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (user_id, LOWER(name))
+                    DO UPDATE SET {set_clause}
+                    RETURNING person_id, name;
+                    """,
+                    (
+                        user_id, name,
+                        fields["relationship"] or None,
+                        fields["birthday"] or None,
+                        fields["address"] or None,
+                        fields["phone"] or None,
+                        fields["email"] or None,
+                        fields["notes"] or None,
+                    ),
+                )
+                row = await cur.fetchone()
+                logger.info("Auto-extracted person: id=%s name='%s'", row[0], row[1])
+    except Exception:
+        logger.exception("Failed to upsert auto-extracted person")
 
 
 async def _evaluate_exchange(

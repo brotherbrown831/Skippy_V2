@@ -18,12 +18,22 @@ class Settings(BaseSettings):
     ha_token: str = ""
     ha_notify_service: str = ""
 
+    # Twilio SMS
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_from_number: str = ""
+    twilio_to_number: str = ""
+
     # Scheduler
     scheduler_enabled: bool = True
 
     # Google Calendar
     google_calendar_id: str = ""
     google_service_account_json: str = ""
+
+    # Google OAuth2 (Gmail + Contacts)
+    google_oauth_client_json: str = ""
+    google_oauth_token_json: str = ""
 
     # Response limits
     voice_max_tokens: int = 300
