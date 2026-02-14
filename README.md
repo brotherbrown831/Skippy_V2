@@ -211,7 +211,24 @@ In OpenWebUI, add a new connection:
 
 ### Voice Endpoint Format
 
-**Request:**
+The endpoint accepts both the HA custom component format and a simpler direct format.
+
+**HA Custom Component Request (what Home Assistant sends):**
+```json
+{
+  "input_text": "what's the weather like?",
+  "conversation_id": "01HQXYZ...",
+  "session_id": "01HQXYZ...",
+  "source": "ha_assist",
+  "context": {
+    "language": "en",
+    "timestamp": "2026-02-14T00:12:45.940353",
+    "agent_id": "SkippyV2"
+  }
+}
+```
+
+**Direct API Request (for testing):**
 ```json
 {
   "text": "what's the weather like?",
@@ -221,10 +238,11 @@ In OpenWebUI, add a new connection:
 }
 ```
 
-**Response:**
+**Response (both formats return this):**
 ```json
 {
-  "response": "How should I know? I'm an AI in a beer can, not a weather satellite."
+  "response": "How should I know? I'm an AI in a beer can, not a weather satellite.",
+  "response_text": "How should I know? I'm an AI in a beer can, not a weather satellite."
 }
 ```
 
@@ -246,7 +264,7 @@ All configuration is via environment variables (`.env` file):
 | `EMBEDDING_MODEL` | OpenAI model for embeddings | `text-embedding-3-small` |
 | `VOICE_MAX_TOKENS` | Max response tokens for voice | `300` |
 | `CHAT_MAX_TOKENS` | Max response tokens for chat | `4096` |
-| `MEMORY_SIMILARITY_THRESHOLD` | Min similarity to return a memory | `0.3` |
+| `MEMORY_SIMILARITY_THRESHOLD` | Min similarity to return a memory | `0.15` |
 | `MEMORY_RETRIEVAL_LIMIT` | Max memories to retrieve per query | `5` |
 | `MEMORY_DEDUP_THRESHOLD` | Similarity threshold for deduplication | `0.8` |
 

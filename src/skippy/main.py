@@ -8,6 +8,8 @@ from langchain_core.messages import HumanMessage
 from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel
 
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
 from skippy.agent.graph import build_graph
 from skippy.config import settings
 
@@ -17,15 +19,27 @@ logger = logging.getLogger("skippy")
 # --- Request/Response Models ---
 
 
+class VoiceContext(BaseModel):
+    language: str = "en"
+    timestamp: str = ""
+    agent_id: str = "skippy"
+
+
 class VoiceRequest(BaseModel):
-    text: str
+    # Support both V1 (input_text) and direct (text) field names
+    text: str = ""
+    input_text: str = ""
     conversation_id: str = ""
+    session_id: str = ""
+    source: str = "voice"
     language: str = "en"
     agent_id: str = "skippy"
+    context: VoiceContext | None = None
 
 
 class VoiceResponse(BaseModel):
     response: str
+    response_text: str = ""
 
 
 class ChatMessage(BaseModel):
@@ -74,9 +88,11 @@ async def lifespan(app: FastAPI):
         open=False,
     )
     await app.state.pool.open()
-    app.state.graph = await build_graph(settings.database_url)
-    logger.info("Skippy agent ready")
-    yield
+    async with AsyncPostgresSaver.from_conn_string(settings.database_url) as checkpointer:
+        await checkpointer.setup()
+        app.state.graph = await build_graph(checkpointer)
+        logger.info("Skippy agent ready")
+        yield
     # Shutdown
     await app.state.pool.close()
 
@@ -95,10 +111,15 @@ async def health():
 @app.post("/webhook/skippy", response_model=VoiceResponse)
 async def voice_endpoint(request: VoiceRequest):
     """Voice endpoint — matches Home Assistant custom component webhook format."""
-    conversation_id = request.conversation_id or f"voice-{int(time.time())}"
+    # Support both field names: input_text (HA component) and text (direct API)
+    user_text = request.input_text or request.text
+    if not user_text:
+        return VoiceResponse(response="No input received.")
+
+    conversation_id = request.conversation_id or request.session_id or f"voice-{int(time.time())}"
 
     result = await app.state.graph.ainvoke(
-        {"messages": [HumanMessage(content=request.text)]},
+        {"messages": [HumanMessage(content=user_text)]},
         config={
             "configurable": {
                 "thread_id": conversation_id,
@@ -109,7 +130,7 @@ async def voice_endpoint(request: VoiceRequest):
     )
 
     response_text = result["messages"][-1].content
-    return VoiceResponse(response=response_text)
+    return VoiceResponse(response=response_text, response_text=response_text)
 
 
 @app.post("/webhook/v1/chat/completions", response_model=ChatResponse)

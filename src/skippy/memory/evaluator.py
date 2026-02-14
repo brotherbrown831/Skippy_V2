@@ -70,9 +70,9 @@ async def evaluate_and_store(
                         content,
                         confidence_score,
                         reinforcement_count,
-                        1 - (embedding <=> ($1)::vector) AS similarity
+                        1 - (embedding <=> (%s)::vector) AS similarity
                     FROM semantic_memories
-                    WHERE user_id = $2
+                    WHERE user_id = %s
                         AND status = 'active'
                         AND embedding IS NOT NULL
                 ) sub
@@ -96,7 +96,7 @@ async def evaluate_and_store(
                         SET reinforcement_count = reinforcement_count + 1,
                             confidence_score = LEAST(confidence_score + 0.05, 1.0),
                             updated_at = NOW()
-                        WHERE memory_id = $1
+                        WHERE memory_id = %s
                         RETURNING memory_id, content, reinforcement_count;
                         """,
                         (existing_id,),
@@ -116,7 +116,7 @@ async def evaluate_and_store(
                 INSERT INTO semantic_memories
                     (user_id, content, embedding, confidence_score, status,
                      created_from_conversation_id, category)
-                VALUES ($1, $2, ($3)::vector, $4, 'active', $5, $6)
+                VALUES (%s, %s, (%s)::vector, %s, 'active', %s, %s)
                 RETURNING memory_id, content;
                 """,
                 (user_id, extracted_fact, embedding_str, confidence, conversation_id, category),

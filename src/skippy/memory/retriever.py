@@ -42,15 +42,15 @@ async def retrieve_memories(
                 content,
                 category,
                 confidence_score,
-                1 - (embedding <=> ($1)::vector) AS similarity
+                1 - (embedding <=> (%s)::vector) AS similarity
             FROM semantic_memories
-            WHERE user_id = $2
+            WHERE user_id = %s
                 AND status = 'active'
                 AND embedding IS NOT NULL
         ) sub
-        WHERE similarity > $3
+        WHERE similarity > %s
         ORDER BY similarity DESC
-        LIMIT $4;
+        LIMIT %s;
     """
 
     try:

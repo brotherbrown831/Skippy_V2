@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 from langchain_core.messages import AIMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import END, StateGraph
@@ -23,7 +24,7 @@ logger = logging.getLogger("skippy")
 tools: list = []
 
 
-async def retrieve_memories_node(state: AgentState, config: dict) -> dict:
+async def retrieve_memories_node(state: AgentState, config: RunnableConfig) -> dict:
     """Retrieve relevant semantic memories based on the user's message."""
     # Get the last user message
     last_message = state["messages"][-1]
@@ -38,10 +39,12 @@ async def retrieve_memories_node(state: AgentState, config: dict) -> dict:
         threshold=settings.memory_similarity_threshold,
     )
 
+    logger.info("Retrieved %d memories for query: '%s'", len(memories), query[:50])
+
     return {"memories": memories}
 
 
-async def agent_node(state: AgentState, config: dict) -> dict:
+async def agent_node(state: AgentState, config: RunnableConfig) -> dict:
     """Call the LLM with personality prompt, memories, and conversation history."""
     source = config.get("configurable", {}).get("source", "voice")
 
@@ -77,7 +80,7 @@ async def agent_node(state: AgentState, config: dict) -> dict:
     return {"messages": [response]}
 
 
-async def evaluate_memory_node(state: AgentState, config: dict) -> dict:
+async def evaluate_memory_node(state: AgentState, config: RunnableConfig) -> dict:
     """Evaluate the conversation for facts worth storing. Runs as fire-and-forget."""
     messages = state["messages"]
     if len(messages) < 2:
@@ -123,11 +126,8 @@ def should_use_tools(state: AgentState) -> str:
     return "evaluate_memory"
 
 
-async def build_graph(database_url: str):
+async def build_graph(checkpointer):
     """Build and compile the LangGraph agent graph."""
-    # Set up Postgres checkpointer for conversation persistence
-    checkpointer = AsyncPostgresSaver.from_conn_string(database_url)
-    await checkpointer.setup()
 
     # Build the graph
     workflow = StateGraph(AgentState)

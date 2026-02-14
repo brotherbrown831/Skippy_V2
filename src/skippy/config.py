@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     chat_max_tokens: int = 4096
 
     # Memory settings
-    memory_similarity_threshold: float = 0.3
+    memory_similarity_threshold: float = 0.15
     memory_retrieval_limit: int = 5
     memory_dedup_threshold: float = 0.8
 
