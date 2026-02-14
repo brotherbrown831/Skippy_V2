@@ -139,16 +139,13 @@ async def _extract_and_store_person(
 ) -> None:
     """Extract structured person fields from a fact and upsert into the people table."""
     try:
-        response = await client.chat.completions.create(
+        response = await client.responses.create(
             model=settings.llm_model,
-            messages=[
-                {"role": "system", "content": PERSON_EXTRACTION_PROMPT},
-                {"role": "user", "content": extracted_fact},
-            ],
-            response_format={"type": "json_object"},
+            instructions=PERSON_EXTRACTION_PROMPT,
+            input=extracted_fact,
             temperature=0.1,
         )
-        data = json.loads(response.choices[0].message.content)
+        data = json.loads(response.output_text)
     except Exception:
         logger.exception("Failed to extract person fields from fact")
         return
@@ -211,28 +208,27 @@ async def _evaluate_exchange(
     assistant_message: str,
 ) -> dict | None:
     """Ask the LLM to evaluate if an exchange contains storable facts."""
-    messages = [
-        {"role": "system", "content": MEMORY_EVALUATION_PROMPT},
-    ]
+    # Build input as conversation array for Responses API
+    input_messages = []
 
     # Add conversation history for context
     for msg in conversation_history:
-        messages.append({"role": msg["role"], "content": msg["content"]})
+        input_messages.append({"role": msg["role"], "content": msg["content"]})
 
     # Add the current exchange
-    messages.append({
+    input_messages.append({
         "role": "user",
         "content": f"User: {user_message}\nAssistant: {assistant_message}",
     })
 
     try:
-        response = await client.chat.completions.create(
+        response = await client.responses.create(
             model=settings.llm_model,
-            messages=messages,
-            response_format={"type": "json_object"},
+            instructions=MEMORY_EVALUATION_PROMPT,
+            input=input_messages,
             temperature=0.1,
         )
-        content = response.choices[0].message.content
+        content = response.output_text
         return json.loads(content)
     except Exception:
         logger.exception("Failed to evaluate memory")

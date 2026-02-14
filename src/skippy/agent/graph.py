@@ -5,10 +5,12 @@ from zoneinfo import ZoneInfo
 
 from langchain_core.messages import AIMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
-from langchain_openai import ChatOpenAI
+from openai import AsyncOpenAI
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
+
+from skippy.llm.responses_llm import ResponsesAPILLM
 
 from skippy.agent.prompts import (
     CHAT_SYSTEM_PROMPT,
@@ -69,10 +71,10 @@ async def agent_node(state: AgentState, config: RunnableConfig) -> dict:
         memory_text = "\n".join(f"- {m['content']}" for m in memories)
         system_prompt += MEMORY_CONTEXT_TEMPLATE.format(memories=memory_text)
 
-    llm = ChatOpenAI(
+    llm = ResponsesAPILLM(
+        client=AsyncOpenAI(api_key=settings.openai_api_key),
         model=settings.llm_model,
-        api_key=settings.openai_api_key,
-        max_tokens=max_tokens,
+        max_completion_tokens=max_tokens,
         temperature=0.7,
     )
 
