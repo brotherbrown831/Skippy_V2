@@ -74,7 +74,7 @@ async def agent_node(state: AgentState, config: RunnableConfig) -> dict:
     llm = ResponsesAPILLM(
         client=AsyncOpenAI(api_key=settings.openai_api_key),
         model=settings.llm_model,
-        max_completion_tokens=max_tokens,
+        max_output_tokens=max_tokens,
         temperature=0.7,
     )
 

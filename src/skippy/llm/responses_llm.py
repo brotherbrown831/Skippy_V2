@@ -22,7 +22,7 @@ class ResponsesAPILLM(BaseChatModel):
     client: AsyncOpenAI = Field(default_factory=AsyncOpenAI)
     model: str = "gpt-4o-mini"
     temperature: float = 0.7
-    max_completion_tokens: Optional[int] = None
+    max_output_tokens: Optional[int] = None
     tools: Optional[List[BaseTool]] = None
 
     class Config:
@@ -87,7 +87,7 @@ class ResponsesAPILLM(BaseChatModel):
             "instructions": instructions if instructions else None,
             "input": input_data,
             "temperature": self.temperature,
-            "max_completion_tokens": self.max_completion_tokens,
+            "max_output_tokens": self.max_output_tokens,
         }
 
         # Add tools if bound
