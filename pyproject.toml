@@ -20,6 +20,7 @@ dependencies = [
     "apscheduler>=3.10,<4",
     "sqlalchemy>=2.0",
     "twilio>=9.0",
+    "rapidfuzz>=3.0",
 ]
 
 [project.optional-dependencies]

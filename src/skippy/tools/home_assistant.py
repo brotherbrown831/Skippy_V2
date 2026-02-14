@@ -14,6 +14,7 @@ Implements:
 
 import json
 import logging
+from datetime import datetime, timedelta
 
 import httpx
 from langchain_core.tools import tool
@@ -21,6 +22,14 @@ from langchain_core.tools import tool
 from skippy.config import settings
 
 logger = logging.getLogger("skippy")
+
+
+# Entity cache with TTL
+_entity_cache = {
+    "entities": [],  # List of {entity_id, friendly_name, domain}
+    "last_updated": None,  # datetime
+    "ttl_seconds": 300  # 5 minutes
+}
 
 
 # ============================================================================
@@ -121,6 +130,173 @@ def _get_ha_state(entity_id: str) -> dict:
         return {"success": False, "error": str(e)}
 
 
+def _fetch_ha_entities() -> list[dict]:
+    """Fetch all entities from HA /api/states endpoint.
+
+    Returns:
+        List of dicts with: entity_id, friendly_name, domain
+    """
+    try:
+        url = f"{settings.ha_url}/api/states"
+        response = httpx.get(url, headers=_get_ha_headers(), timeout=10)
+        response.raise_for_status()
+
+        entities = []
+        for entity in response.json():
+            entity_id = entity.get("entity_id", "")
+            domain = entity_id.split(".")[0] if "." in entity_id else ""
+            friendly_name = entity.get("attributes", {}).get("friendly_name", "")
+
+            entities.append({
+                "entity_id": entity_id,
+                "friendly_name": friendly_name,
+                "domain": domain
+            })
+
+        logger.info("Fetched %d entities from Home Assistant", len(entities))
+        return entities
+
+    except Exception as e:
+        logger.error("Failed to fetch HA entities: %s", e)
+        return []
+
+
+def _get_cached_entities() -> list[dict]:
+    """Return cached entities, refreshing if expired.
+
+    Returns:
+        List of entity dicts
+    """
+    now = datetime.now()
+    last_updated = _entity_cache["last_updated"]
+    ttl = timedelta(seconds=_entity_cache["ttl_seconds"])
+
+    # Refresh if cache is empty or expired
+    if not _entity_cache["entities"] or last_updated is None or (now - last_updated) > ttl:
+        entities = _fetch_ha_entities()
+        _entity_cache["entities"] = entities
+        _entity_cache["last_updated"] = now
+        logger.info("Entity cache refreshed (%d entities)", len(entities))
+
+    return _entity_cache["entities"]
+
+
+def _resolve_entity_id(
+    entity_id_or_name: str,
+    domain: str | None = None,
+    threshold: int = 85
+) -> dict:
+    """Resolve fuzzy entity name to exact entity_id.
+
+    Args:
+        entity_id_or_name: User input (e.g., 'office light' or 'light.officesw')
+        domain: Optional domain filter (e.g., 'light', 'switch')
+        threshold: Minimum fuzzy match score (default 85)
+
+    Returns:
+        {
+            "entity_id": str,        # Resolved entity ID
+            "confidence": float,     # Match score 0-100
+            "matched_name": str,     # What was matched (entity_id or friendly_name)
+            "suggestion": bool       # True if 70-84, requires user confirmation
+        }
+
+    Raises:
+        ValueError: If no match found or score < 70
+    """
+    from rapidfuzz import process, fuzz
+
+    # Normalize input
+    query = entity_id_or_name.strip().lower()
+
+    # Get cached entities
+    entities = _get_cached_entities()
+
+    # Check for exact entity_id match first (fast path)
+    for entity in entities:
+        if entity["entity_id"].lower() == query:
+            return {
+                "entity_id": entity["entity_id"],
+                "confidence": 100.0,
+                "matched_name": entity["entity_id"],
+                "suggestion": False
+            }
+
+    # Filter by domain if specified
+    search_entities = entities
+    if domain:
+        search_entities = [e for e in entities if e["domain"] == domain]
+        # Fall back to all domains if filtering returns nothing
+        if not search_entities:
+            logger.warning("No entities found in domain '%s', searching all domains", domain)
+            search_entities = entities
+
+    # Build search corpus: entity_ids + friendly_names + combined forms
+    choices = []
+    for entity in search_entities:
+        # Add entity_id without domain prefix (e.g., "officesw" from "light.officesw")
+        entity_name = entity["entity_id"].split(".", 1)[1] if "." in entity["entity_id"] else entity["entity_id"]
+        choices.append((entity["entity_id"], entity_name.lower()))
+
+        # Add friendly name if available
+        if entity["friendly_name"]:
+            choices.append((entity["entity_id"], entity["friendly_name"].lower()))
+
+        # Add combined form: "light office" from domain + friendly_name
+        if entity["friendly_name"]:
+            combined = f"{entity['domain']} {entity['friendly_name']}".lower()
+            choices.append((entity["entity_id"], combined))
+
+    # Use rapidfuzz to find best match
+    if not choices:
+        raise ValueError("No entities available for matching")
+
+    # Extract best match using WRatio scorer (handles partial matches well)
+    result = process.extractOne(
+        query,
+        [choice[1] for choice in choices],
+        scorer=fuzz.WRatio
+    )
+
+    if not result:
+        raise ValueError(f"Could not find entity matching '{entity_id_or_name}'")
+
+    matched_text, score, matched_idx = result
+    matched_entity_id = choices[matched_idx][0]
+
+    # Evaluate score and return result
+    if score >= threshold:
+        # High confidence - auto-use
+        return {
+            "entity_id": matched_entity_id,
+            "confidence": float(score),
+            "matched_name": matched_text,
+            "suggestion": False
+        }
+    elif score >= 70:
+        # Medium confidence - suggest to user
+        return {
+            "entity_id": matched_entity_id,
+            "confidence": float(score),
+            "matched_name": matched_text,
+            "suggestion": True
+        }
+    else:
+        # Low confidence - reject
+        # Find top 3 similar entities for helpful error
+        top_matches = process.extract(
+            query,
+            [choice[1] for choice in choices],
+            scorer=fuzz.WRatio,
+            limit=3
+        )
+        suggestions = [choices[m[2]][0] for m in top_matches]
+        raise ValueError(
+            f"Could not find entity matching '{entity_id_or_name}'. "
+            f"Did you mean one of these? {', '.join(suggestions[:3])}"
+        )
+
+
 # ============================================================================
 # Notification Tools
 # ============================================================================
@@ -196,8 +372,17 @@ def get_entity_state(entity_id: str) -> str:
     Returns the state value and relevant attributes.
 
     Args:
-        entity_id: The entity ID to query (e.g., 'light.living_room', 'sensor.temperature')
+        entity_id: The entity ID or name to query (e.g., 'light.living_room', 'temperature sensor', or 'sensor.temperature')
     """
+    # Fuzzy entity resolution (no domain filter - searches all)
+    try:
+        resolved = _resolve_entity_id(entity_id, domain=None, threshold=85)
+        if resolved["suggestion"]:
+            return f"Did you mean '{resolved['matched_name']}' ({resolved['entity_id']})?"
+        entity_id = resolved["entity_id"]
+    except ValueError as e:
+        return str(e)
+
     result = _get_ha_state(entity_id)
 
     if result["success"]:
@@ -238,9 +423,18 @@ def call_service(
     Args:
         domain: Service domain (e.g., 'light', 'switch', 'climate')
         service: Service name (e.g., 'turn_on', 'turn_off', 'toggle')
-        entity_id: Target entity (e.g., 'light.living_room')
+        entity_id: Target entity or name (e.g., 'light.living_room' or 'living room')
         parameters: JSON string of additional parameters (e.g., '{"brightness": 180}')
     """
+    # Fuzzy entity resolution (no domain filter - user specifies domain via parameter)
+    try:
+        resolved = _resolve_entity_id(entity_id, domain=None, threshold=85)
+        if resolved["suggestion"]:
+            return f"Did you mean '{resolved['matched_name']}' ({resolved['entity_id']})?"
+        entity_id = resolved["entity_id"]
+    except ValueError as e:
+        return str(e)
+
     kwargs = {}
     if parameters:
         try:
@@ -270,10 +464,23 @@ def turn_on_light(
     """Turn on a light with optional brightness and color.
 
     Args:
-        entity_id: Light entity ID (e.g., 'light.living_room')
+        entity_id: Light entity ID or name (e.g., 'light.living_room' or 'living room light')
         brightness: Brightness 0-100 (optional, default is last value)
         color: Color name - 'red', 'green', 'blue', 'white', 'warm_white', 'cool_white' (optional)
     """
+    # Fuzzy entity resolution
+    try:
+        resolved = _resolve_entity_id(entity_id, domain="light", threshold=85)
+
+        # Handle suggestions (70-84 score)
+        if resolved["suggestion"]:
+            return (f"Did you mean '{resolved['matched_name']}' ({resolved['entity_id']})? "
+                    f"Please confirm or provide exact entity ID.")
+
+        entity_id = resolved["entity_id"]
+    except ValueError as e:
+        return str(e)
+
     kwargs = {}
 
     if brightness is not None:
@@ -317,8 +524,20 @@ def turn_off_light(entity_id: str) -> str:
     """Turn off a light.
 
     Args:
-        entity_id: Light entity ID (e.g., 'light.living_room')
+        entity_id: Light entity ID or name (e.g., 'light.living_room' or 'living room light')
     """
+    # Fuzzy entity resolution
+    try:
+        resolved = _resolve_entity_id(entity_id, domain="light", threshold=85)
+
+        if resolved["suggestion"]:
+            return (f"Did you mean '{resolved['matched_name']}' ({resolved['entity_id']})? "
+                    f"Please confirm or provide exact entity ID.")
+
+        entity_id = resolved["entity_id"]
+    except ValueError as e:
+        return str(e)
+
     result = _call_ha_service("light", "turn_off", entity_id)
 
     if result["success"]:
@@ -337,8 +556,17 @@ def turn_on_switch(entity_id: str) -> str:
     """Turn on a switch.
 
     Args:
-        entity_id: Switch entity ID (e.g., 'switch.living_room_fan')
+        entity_id: Switch entity ID or name (e.g., 'switch.fan' or 'fan')
     """
+    # Fuzzy entity resolution
+    try:
+        resolved = _resolve_entity_id(entity_id, domain="switch", threshold=85)
+        if resolved["suggestion"]:
+            return f"Did you mean '{resolved['matched_name']}' ({resolved['entity_id']})?"
+        entity_id = resolved["entity_id"]
+    except ValueError as e:
+        return str(e)
+
     result = _call_ha_service("switch", "turn_on", entity_id)
     return f"Turned on {entity_id}" if result["success"] else f"Failed: {result['error']}"
 
@@ -348,8 +576,17 @@ def turn_off_switch(entity_id: str) -> str:
     """Turn off a switch.
 
     Args:
-        entity_id: Switch entity ID (e.g., 'switch.living_room_fan')
+        entity_id: Switch entity ID or name (e.g., 'switch.fan' or 'fan')
     """
+    # Fuzzy entity resolution
+    try:
+        resolved = _resolve_entity_id(entity_id, domain="switch", threshold=85)
+        if resolved["suggestion"]:
+            return f"Did you mean '{resolved['matched_name']}' ({resolved['entity_id']})?"
+        entity_id = resolved["entity_id"]
+    except ValueError as e:
+        return str(e)
+
     result = _call_ha_service("switch", "turn_off", entity_id)
     return f"Turned off {entity_id}" if result["success"] else f"Failed: {result['error']}"
 
@@ -368,10 +605,19 @@ def set_thermostat(
     """Set thermostat temperature and optionally change HVAC mode.
 
     Args:
-        entity_id: Climate entity ID (e.g., 'climate.living_room')
+        entity_id: Climate entity ID or name (e.g., 'climate.living_room' or 'living room thermostat')
         temperature: Target temperature in Celsius
         mode: HVAC mode - 'heat', 'cool', 'heat_cool', 'auto', 'off' (optional)
     """
+    # Fuzzy entity resolution
+    try:
+        resolved = _resolve_entity_id(entity_id, domain="climate", threshold=85)
+        if resolved["suggestion"]:
+            return f"Did you mean '{resolved['matched_name']}' ({resolved['entity_id']})?"
+        entity_id = resolved["entity_id"]
+    except ValueError as e:
+        return str(e)
+
     # Set temperature
     result = _call_ha_service("climate", "set_temperature", entity_id, temperature=temperature)
 
@@ -406,8 +652,17 @@ def lock_door(entity_id: str) -> str:
     """Lock a door.
 
     Args:
-        entity_id: Lock entity ID (e.g., 'lock.front_door')
+        entity_id: Lock entity ID or name (e.g., 'lock.front_door' or 'front door')
     """
+    # Fuzzy entity resolution
+    try:
+        resolved = _resolve_entity_id(entity_id, domain="lock", threshold=85)
+        if resolved["suggestion"]:
+            return f"Did you mean '{resolved['matched_name']}' ({resolved['entity_id']})?"
+        entity_id = resolved["entity_id"]
+    except ValueError as e:
+        return str(e)
+
     result = _call_ha_service("lock", "lock", entity_id)
     return f"Locked {entity_id}" if result["success"] else f"Failed to lock: {result['error']}"
 
@@ -417,8 +672,17 @@ def unlock_door(entity_id: str) -> str:
     """Unlock a door.
 
     Args:
-        entity_id: Lock entity ID (e.g., 'lock.front_door')
+        entity_id: Lock entity ID or name (e.g., 'lock.front_door' or 'front door')
     """
+    # Fuzzy entity resolution
+    try:
+        resolved = _resolve_entity_id(entity_id, domain="lock", threshold=85)
+        if resolved["suggestion"]:
+            return f"Did you mean '{resolved['matched_name']}' ({resolved['entity_id']})?"
+        entity_id = resolved["entity_id"]
+    except ValueError as e:
+        return str(e)
+
     result = _call_ha_service("lock", "unlock", entity_id)
     return f"Unlocked {entity_id}" if result["success"] else f"Failed to unlock: {result['error']}"
 
@@ -433,8 +697,17 @@ def open_cover(entity_id: str) -> str:
     """Open a cover (blinds, garage door, etc).
 
     Args:
-        entity_id: Cover entity ID (e.g., 'cover.garage_door', 'cover.living_room_blinds')
+        entity_id: Cover entity ID or name (e.g., 'cover.garage_door' or 'garage door')
     """
+    # Fuzzy entity resolution
+    try:
+        resolved = _resolve_entity_id(entity_id, domain="cover", threshold=85)
+        if resolved["suggestion"]:
+            return f"Did you mean '{resolved['matched_name']}' ({resolved['entity_id']})?"
+        entity_id = resolved["entity_id"]
+    except ValueError as e:
+        return str(e)
+
     result = _call_ha_service("cover", "open_cover", entity_id)
     return f"Opening {entity_id}" if result["success"] else f"Failed to open: {result['error']}"
 
@@ -444,8 +717,17 @@ def close_cover(entity_id: str) -> str:
     """Close a cover (blinds, garage door, etc).
 
     Args:
-        entity_id: Cover entity ID (e.g., 'cover.garage_door', 'cover.living_room_blinds')
+        entity_id: Cover entity ID or name (e.g., 'cover.garage_door' or 'garage door')
     """
+    # Fuzzy entity resolution
+    try:
+        resolved = _resolve_entity_id(entity_id, domain="cover", threshold=85)
+        if resolved["suggestion"]:
+            return f"Did you mean '{resolved['matched_name']}' ({resolved['entity_id']})?"
+        entity_id = resolved["entity_id"]
+    except ValueError as e:
+        return str(e)
+
     result = _call_ha_service("cover", "close_cover", entity_id)
     return f"Closing {entity_id}" if result["success"] else f"Failed to close: {result['error']}"
 
@@ -455,9 +737,18 @@ def set_cover_position(entity_id: str, position: int) -> str:
     """Set cover position (blinds, shades, etc).
 
     Args:
-        entity_id: Cover entity ID (e.g., 'cover.living_room_blinds')
+        entity_id: Cover entity ID or name (e.g., 'cover.blinds' or 'blinds')
         position: Position 0-100 (0 = closed, 100 = open)
     """
+    # Fuzzy entity resolution
+    try:
+        resolved = _resolve_entity_id(entity_id, domain="cover", threshold=85)
+        if resolved["suggestion"]:
+            return f"Did you mean '{resolved['matched_name']}' ({resolved['entity_id']})?"
+        entity_id = resolved["entity_id"]
+    except ValueError as e:
+        return str(e)
+
     if position < 0 or position > 100:
         return "Position must be 0-100"
 
