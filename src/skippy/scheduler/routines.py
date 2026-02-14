@@ -10,10 +10,11 @@ PREDEFINED_ROUTINES = [
         "task_id": "morning-briefing",
         "name": "Morning Briefing",
         "prompt": (
-            "Check today's calendar events and send a push notification to Nolan "
+            "Check today's calendar events and send a Telegram message to Nolan "
             "with a brief summary of what's on the schedule today. Include event times "
-            "and titles. If there are no events, still send a notification saying the "
-            "day is clear. Be your usual snarky self in the notification."
+            "and titles. If there are no events, still send a message saying the "
+            "day is clear. Be your usual snarky self in the message. "
+            "Use the send_telegram_message tool."
         ),
         "trigger": CronTrigger(hour=7, minute=0, timezone=settings.timezone),
     },
@@ -21,9 +22,10 @@ PREDEFINED_ROUTINES = [
         "task_id": "evening-summary",
         "name": "Evening Summary",
         "prompt": (
-            "Check tomorrow's calendar events and send a push notification to Nolan "
+            "Check tomorrow's calendar events and send a Telegram message to Nolan "
             "with a brief preview of what's coming up tomorrow. If there's nothing "
-            "on the calendar, say so. Keep it short and snarky."
+            "on the calendar, say so. Keep it short and snarky. "
+            "Use the send_telegram_message tool."
         ),
         "trigger": CronTrigger(hour=22, minute=0, timezone=settings.timezone),
     },
@@ -32,10 +34,10 @@ PREDEFINED_ROUTINES = [
         "name": "Upcoming Event Reminder",
         "prompt": (
             "Check if there are any calendar events starting in the next 30 minutes. "
-            "If there are, send a push notification reminding Nolan about each one "
+            "If there are, send a Telegram message reminding Nolan about each one "
             "with the event title and start time. If there are no upcoming events in "
-            "the next 30 minutes, do NOT send a notification — just respond with "
-            "'No upcoming events.'"
+            "the next 30 minutes, do NOT send a message — just respond with "
+            "'No upcoming events.' Use the send_telegram_message tool for reminders."
         ),
         "trigger": IntervalTrigger(minutes=30),
     },

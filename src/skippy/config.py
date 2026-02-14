@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     # Telegram
     telegram_bot_token: str = ""
     telegram_allowed_chat_ids: str = ""
+    telegram_notify_chat_ids: str = ""
     telegram_poll_interval: int = 2
     telegram_long_poll_timeout: int = 20
     telegram_api_base: str = "https://api.telegram.org"

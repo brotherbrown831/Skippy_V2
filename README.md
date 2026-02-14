@@ -74,6 +74,7 @@ An AI personal assistant with long-term semantic memory, built with LangGraph, F
 | `google_contacts` | 4 | Search, view, create, update contacts |
 | `scheduler` | 4 | Recurring tasks, reminders, timers |
 | `people` | 5 | Structured people database CRUD |
+| `telegram` | 1 | Send Telegram messages |
 
 ## Project Structure
 
@@ -314,6 +315,7 @@ All configuration is via environment variables (`.env` file):
 | `TWILIO_TO_NUMBER` | Your phone number | empty |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token | empty |
 | `TELEGRAM_ALLOWED_CHAT_IDS` | Comma-separated allowed chat IDs | empty |
+| `TELEGRAM_NOTIFY_CHAT_IDS` | Comma-separated chat IDs for proactive messages | empty |
 | `TELEGRAM_POLL_INTERVAL` | Polling backoff seconds | `2` |
 | `TELEGRAM_LONG_POLL_TIMEOUT` | Long polling timeout seconds | `20` |
 | `TELEGRAM_API_BASE` | Telegram API base URL | `https://api.telegram.org` |

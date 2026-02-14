@@ -213,8 +213,8 @@ async def set_reminder(
     task_id = f"reminder-{uuid.uuid4().hex[:8]}"
     run_date_iso = run_dt.isoformat()
     prompt = (
-        f"Send a push notification to Nolan with this reminder: '{message}'. "
-        f"Use the send_notification tool with the message. Be brief and snarky."
+        f"Send a Telegram message to Nolan with this reminder: '{message}'. "
+        f"Use the send_telegram_message tool with the message. Be brief and snarky."
     )
 
     try:
