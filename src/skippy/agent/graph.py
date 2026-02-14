@@ -17,11 +17,11 @@ from skippy.agent.state import AgentState
 from skippy.config import settings
 from skippy.memory.evaluator import evaluate_and_store
 from skippy.memory.retriever import retrieve_memories
+from skippy.tools import collect_tools
 
 logger = logging.getLogger("skippy")
 
-# Tools will be added here as they're built
-tools: list = []
+tools: list = collect_tools()
 
 
 async def retrieve_memories_node(state: AgentState, config: RunnableConfig) -> dict:

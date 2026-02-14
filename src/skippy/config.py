@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     ha_url: str = "http://homeassistant.local:8123"
     ha_token: str = ""
 
+    # Google Calendar
+    google_calendar_id: str = ""
+    google_service_account_json: str = ""
+
     # Response limits
     voice_max_tokens: int = 300
     chat_max_tokens: int = 4096
