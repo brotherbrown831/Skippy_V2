@@ -53,29 +53,30 @@ An AI personal assistant with long-term semantic memory, built with LangGraph, F
 | Component | Technology |
 |-----------|-----------|
 | Agent framework | LangGraph (ReAct pattern) |
-| LLM | OpenAI gpt-4o-mini |
+| LLM | OpenAI gpt-4o-mini (Responses API) |
 | Embeddings | OpenAI text-embedding-3-small |
 | HTTP server | FastAPI + Uvicorn |
 | Database | PostgreSQL 17 + pgvector |
 | Conversation state | langgraph-checkpoint-postgres |
 | Scheduler | APScheduler 3.x |
 | SMS | Twilio |
+| Home Assistant | REST API with fuzzy entity matching |
 | Google APIs | Calendar (service account), Gmail + Contacts (OAuth2) |
 | Telegram | Telegram Bot API (long polling) |
 | Deployment | Docker Compose |
 
-## Tools (28 total)
+## Tools (41 total)
 
 | Module | Tools | Description |
 |--------|-------|-------------|
-| `home_assistant` | 2 | Push notifications (HA), SMS (Twilio) |
+| `home_assistant` | 14 | Device control (lights, switches, thermostats, locks, covers) + notifications with fuzzy entity matching |
 | `google_calendar` | 6 | Read/write calendar events |
 | `gmail` | 5 | Check inbox, search, read, send, reply |
 | `google_contacts` | 4 | Search, view, create, update contacts |
 | `scheduler` | 4 | Recurring tasks, reminders, timers |
 | `people` | 5 | Structured people database CRUD |
 | `contact_sync` | 1 | Google Contacts → People table sync (on-demand + scheduled) |
-| `telegram` | 1 | Receive messages via polling, send notifications |
+| `telegram` | 2 | Receive messages via polling, send notifications |
 
 ## Project Structure
 
@@ -358,14 +359,20 @@ Conversation history is managed by LangGraph's built-in PostgreSQL checkpointer 
 
 ### Agent Flow
 
-1. **User speaks** into a Wyoming satellite (or types in OpenWebUI)
-2. Home Assistant converts speech to text and POSTs to `/webhook/skippy`
+1. **User speaks** into a Wyoming satellite (or types in OpenWebUI/Telegram)
+2. Input converts to text and POSTs to `/webhook/skippy` (HA), `/webhook/v1/chat/completions` (OpenWebUI), or Telegram
 3. **Retrieve memories** — embed the query, cosine similarity search against pgvector
-4. **Agent reasons** — LLM gets Skippy's personality prompt + relevant memories + conversation history
-5. **Tool use** — if the agent decides to use a tool (calendar, email, contacts, SMS, etc.), it executes and loops back
-6. **Respond** — text sent back to HA, which converts to speech via TTS
+4. **Agent reasons** — LLM (Responses API) gets Skippy's personality prompt + relevant memories + conversation history
+5. **Tool use** — if the agent decides to use a tool (calendar, email, contacts, HA device control, etc.), it executes and loops back
+6. **Respond** — text sent back to requestor (HA voice TTS, OpenWebUI chat, Telegram message)
 7. **Evaluate memory** — background task asks LLM if the exchange contains facts worth remembering
 8. **Store/reinforce** — new facts get embedded and stored; duplicates get reinforced
+
+### API & LLM Details
+
+- **LLM API**: OpenAI Responses API (`/v1/responses`) — 40-80% better cache utilization than Chat Completions
+- **Model**: `gpt-4o-mini` (can be upgraded to GPT-5)
+- **Home Assistant Integration**: Native REST API with fuzzy entity matching (type "office lights" instead of exact entity ID like `light.office_lights`)
 
 ### Memory System
 

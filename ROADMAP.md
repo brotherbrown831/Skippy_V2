@@ -7,14 +7,14 @@
 
 What's already working:
 
-- LangGraph agent with ReAct pattern (gpt-4o-mini)
+- **LangGraph agent** with ReAct pattern (gpt-4o-mini via OpenAI Responses API — 40-80% better cache utilization)
 - FastAPI backend with voice webhook + OpenAI-compatible chat endpoint
 - PostgreSQL 17 + pgvector semantic memory (store, retrieve, dedup)
 - langgraph-checkpoint-postgres for conversation persistence
-- Home Assistant voice integration via Wyoming satellites
+- **Home Assistant** voice integration via Wyoming satellites + REST API with fuzzy entity matching (type "office lights" instead of `light.office_lights`)
 - **Telegram bot** with long-polling (receive + send messages)
 - Docker Compose deployment with dev hot-reload
-- Sarcastic Skippy personality with voice/chat modes
+- Sarcastic Skippy personality with voice/chat/Telegram modes
 - Google Calendar integration (read/write via service account)
 - Gmail integration (read inbox, search, send, reply via OAuth2)
 - Google Contacts integration (search, view, create, update via OAuth2)
@@ -24,7 +24,7 @@ What's already working:
 - APScheduler task engine (recurring tasks, one-time reminders, timers, direct-function routines)
 - Structured people database with auto-extraction + Google Contacts sync
 - Unified Memory Bank web dashboard (semantic memories + people)
-- 28 tools across 8 modules
+- **41 tools** across 9 modules
 
 ---
 
@@ -40,6 +40,7 @@ What's already working:
 - Auto-extraction: memory evaluator detects person/family facts and upserts into people table
 - **Google Contacts sync**: daily auto-sync at 2 AM + on-demand `sync_contacts_now` tool (253 contacts imported)
 - Unified Memory Bank web dashboard with tabbed view
+- **Home Assistant fuzzy entity matching**: All 14 HA device control tools support natural language entity names (multi-tier confidence: 85+ auto-use, 70-84 suggest, <70 reject, 5-min entity cache)
 
 **Remaining:**
 - Events table (holiday, recurring, one-time)
