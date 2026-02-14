@@ -1,5 +1,7 @@
 import asyncio
 import logging
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from langchain_core.messages import AIMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
@@ -55,6 +57,11 @@ async def agent_node(state: AgentState, config: RunnableConfig) -> dict:
     else:
         system_prompt = CHAT_SYSTEM_PROMPT
         max_tokens = settings.chat_max_tokens
+
+    # Inject current date/time so the LLM knows when "today" and "tonight" are
+    tz = ZoneInfo(settings.timezone)
+    now = datetime.now(tz).strftime("%A, %B %d, %Y at %I:%M %p %Z")
+    system_prompt += f"\n\nCurrent date and time: {now}"
 
     # Inject memories into system prompt if we have any
     memories = state.get("memories", [])

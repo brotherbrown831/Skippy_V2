@@ -1,7 +1,9 @@
 """Google Calendar tools for Skippy — full read/write calendar access."""
 
 import logging
+import re
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from langchain_core.tools import tool
 
@@ -167,14 +169,62 @@ def search_events(query: str) -> str:
         return f"Error searching calendar: {e}"
 
 
+# --- Date/time helpers ---
+
+
+def _resolve_datetime(date_str: str, time_str: str) -> datetime:
+    """Resolve a date and time string into a timezone-aware datetime.
+
+    date_str: 'today', 'tomorrow', or 'YYYY-MM-DD'
+    time_str: '10pm', '10:00 PM', '22:00', '14:30', etc.
+    """
+    tz = ZoneInfo(settings.timezone)
+    now = datetime.now(tz)
+
+    # Resolve date
+    date_lower = date_str.strip().lower()
+    if date_lower == "today":
+        date = now.date()
+    elif date_lower == "tomorrow":
+        date = (now + timedelta(days=1)).date()
+    else:
+        date = datetime.strptime(date_str.strip(), "%Y-%m-%d").date()
+
+    # Resolve time — handle formats like "10pm", "10:00 PM", "22:00", "2:30pm"
+    time_clean = time_str.strip().upper().replace(" ", "")
+    try:
+        # Try 24-hour format first: "22:00", "14:30"
+        if re.match(r"^\d{1,2}:\d{2}$", time_clean):
+            t = datetime.strptime(time_clean, "%H:%M").time()
+        # "10:00PM", "2:30AM"
+        elif re.match(r"^\d{1,2}:\d{2}[AP]M$", time_clean):
+            t = datetime.strptime(time_clean, "%I:%M%p").time()
+        # "10PM", "2AM"
+        elif re.match(r"^\d{1,2}[AP]M$", time_clean):
+            t = datetime.strptime(time_clean, "%I%p").time()
+        else:
+            # Last resort: try parsing as-is
+            t = datetime.strptime(time_clean, "%H:%M").time()
+    except ValueError:
+        raise ValueError(f"Could not parse time: '{time_str}'")
+
+    return datetime.combine(date, t, tzinfo=tz)
+
+
+def _to_iso(dt: datetime) -> str:
+    """Format a datetime as ISO 8601 with timezone offset."""
+    return dt.isoformat()
+
+
 # --- Write tools ---
 
 
 @tool
 def create_event(
     title: str,
+    date: str,
     start_time: str,
-    end_time: str,
+    end_time: str = "",
     description: str = "",
     location: str = "",
 ) -> str:
@@ -183,18 +233,25 @@ def create_event(
 
     Args:
         title: The event title/summary.
-        start_time: Start time in ISO 8601 format (e.g. '2026-02-15T14:00:00-06:00').
-        end_time: End time in ISO 8601 format (e.g. '2026-02-15T15:00:00-06:00').
+        date: The date for the event. Use 'today', 'tomorrow', or 'YYYY-MM-DD' format.
+        start_time: Start time like '10pm', '2:30pm', '14:00', or '10:00 AM'.
+        end_time: End time in the same format. If not provided, defaults to 1 hour after start.
         description: Optional event description or notes.
         location: Optional event location.
     """
     try:
         service = _get_calendar_service()
 
+        start_dt = _resolve_datetime(date, start_time)
+        if end_time:
+            end_dt = _resolve_datetime(date, end_time)
+        else:
+            end_dt = start_dt + timedelta(hours=1)
+
         event_body = {
             "summary": title,
-            "start": {"dateTime": start_time},
-            "end": {"dateTime": end_time},
+            "start": {"dateTime": _to_iso(start_dt)},
+            "end": {"dateTime": _to_iso(end_dt)},
         }
         if description:
             event_body["description"] = description
@@ -208,8 +265,9 @@ def create_event(
 
         event_id = created.get("id", "unknown")
         link = created.get("htmlLink", "")
-        logger.info("Calendar event created: id=%s, title='%s'", event_id, title)
-        return f"Event '{title}' created successfully (id: {event_id}). Link: {link}"
+        formatted_start = start_dt.strftime("%B %d, %Y at %I:%M %p %Z")
+        logger.info("Calendar event created: id=%s, title='%s', start=%s", event_id, title, formatted_start)
+        return f"Event '{title}' created for {formatted_start} (id: {event_id}). Link: {link}"
     except Exception as e:
         logger.error("Failed to create event: %s", e)
         return f"Error creating event: {e}"
@@ -219,6 +277,7 @@ def create_event(
 def update_event(
     event_id: str,
     title: str = "",
+    date: str = "",
     start_time: str = "",
     end_time: str = "",
     description: str = "",
@@ -231,15 +290,15 @@ def update_event(
     Args:
         event_id: The Google Calendar event ID (from search or listing results).
         title: New event title (leave empty to keep current).
-        start_time: New start time in ISO 8601 format (leave empty to keep current).
-        end_time: New end time in ISO 8601 format (leave empty to keep current).
+        date: New date as 'today', 'tomorrow', or 'YYYY-MM-DD' (leave empty to keep current).
+        start_time: New start time like '10pm', '2:30pm', '14:00' (leave empty to keep current).
+        end_time: New end time in the same format (leave empty to keep current).
         description: New description (leave empty to keep current).
         location: New location (leave empty to keep current).
     """
     try:
         service = _get_calendar_service()
 
-        # Fetch current event first
         existing = service.events().get(
             calendarId=settings.google_calendar_id,
             eventId=event_id,
@@ -247,10 +306,10 @@ def update_event(
 
         if title:
             existing["summary"] = title
-        if start_time:
-            existing["start"] = {"dateTime": start_time}
-        if end_time:
-            existing["end"] = {"dateTime": end_time}
+        if date and start_time:
+            existing["start"] = {"dateTime": _to_iso(_resolve_datetime(date, start_time))}
+        if date and end_time:
+            existing["end"] = {"dateTime": _to_iso(_resolve_datetime(date, end_time))}
         if description:
             existing["description"] = description
         if location:

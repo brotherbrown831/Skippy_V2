@@ -2,6 +2,9 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    # General
+    timezone: str = "America/Chicago"
+
     # OpenAI
     openai_api_key: str
     llm_model: str = "gpt-4o-mini"
