@@ -1,7 +1,10 @@
 import asyncio
+import json
 import logging
+from datetime import datetime, timedelta
 
 import httpx
+import psycopg
 from langchain_core.messages import HumanMessage
 
 from skippy.config import settings
@@ -71,6 +74,66 @@ async def _handle_update(app, client: httpx.AsyncClient, update: dict, allowed: 
         logger.exception("Failed to send Telegram response")
 
 
+async def _handle_callback_query(app, client: httpx.AsyncClient, callback: dict):
+    """Handle inline button presses from Telegram."""
+    callback_id = callback.get("id")
+    data = callback.get("data", "")
+    message = callback.get("message", {})
+    chat_id = message.get("chat", {}).get("id")
+
+    if not data or not chat_id:
+        return
+
+    # Parse callback data: format is "action:reminder_id" (e.g., "ack:42", "snooze:42", "dismiss:42")
+    try:
+        action, reminder_id = data.split(":", 1)
+        reminder_id = int(reminder_id)
+    except (ValueError, IndexError):
+        logger.warning("Invalid callback data: %s", data)
+        return
+
+    # Update database based on action
+    try:
+        async with await psycopg.AsyncConnection.connect(
+            settings.database_url, autocommit=True
+        ) as conn:
+            async with conn.cursor() as cur:
+                if action == "ack":
+                    await cur.execute(
+                        "UPDATE reminder_acknowledgments SET status = 'acknowledged', "
+                        "acknowledged_at = NOW(), updated_at = NOW() WHERE reminder_id = %s",
+                        (reminder_id,)
+                    )
+                    answer_text = "✓ Got it!"
+                elif action == "snooze":
+                    snooze_until = datetime.now() + timedelta(minutes=10)
+                    await cur.execute(
+                        "UPDATE reminder_acknowledgments SET status = 'snoozed', "
+                        "snoozed_until = %s, updated_at = NOW() WHERE reminder_id = %s",
+                        (snooze_until, reminder_id)
+                    )
+                    answer_text = "Snoozed for 10 minutes"
+                elif action == "dismiss":
+                    await cur.execute(
+                        "UPDATE reminder_acknowledgments SET status = 'dismissed', "
+                        "acknowledged_at = NOW(), updated_at = NOW() WHERE reminder_id = %s",
+                        (reminder_id,)
+                    )
+                    answer_text = "Dismissed"
+                else:
+                    answer_text = "Unknown action"
+    except Exception:
+        logger.exception("Failed to handle callback query")
+        answer_text = "Error processing action"
+
+    # Send acknowledgment back to Telegram (shows brief popup)
+    answer_url = f"{settings.telegram_api_base.rstrip('/')}/bot{settings.telegram_bot_token}/answerCallbackQuery"
+    try:
+        await client.post(answer_url, json={"callback_query_id": callback_id, "text": answer_text})
+    except Exception:
+        logger.exception("Failed to answer callback query")
+
+
 async def telegram_polling_loop(app) -> None:
     if not settings.telegram_bot_token:
         logger.info("Telegram disabled (no bot token configured)")
@@ -104,7 +167,11 @@ async def telegram_polling_loop(app) -> None:
                     update_id = update.get("update_id")
                     if update_id is not None:
                         offset = max(offset, update_id + 1)
+                    # Handle regular messages
                     await _handle_update(app, client, update, allowed)
+                    # Handle callback queries (button presses)
+                    if "callback_query" in update:
+                        await _handle_callback_query(app, client, update["callback_query"])
             except asyncio.CancelledError:
                 raise
             except Exception:

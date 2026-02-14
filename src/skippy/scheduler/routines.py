@@ -34,10 +34,14 @@ PREDEFINED_ROUTINES = [
         "name": "Upcoming Event Reminder",
         "prompt": (
             "Check if there are any calendar events starting in the next 30 minutes. "
-            "If there are, send a Telegram message reminding Nolan about each one "
-            "with the event title and start time. If there are no upcoming events in "
-            "the next 30 minutes, do NOT send a message — just respond with "
-            "'No upcoming events.' Use the send_telegram_message tool for reminders."
+            "For each upcoming event, check the reminder_acknowledgments table to see if "
+            "a reminder has already been sent and acknowledged. Only send reminders for events that: "
+            "1) Have never been reminded about (no row in reminder_acknowledgments), OR "
+            "2) Were snoozed and the snooze time has passed (status='snoozed' AND snoozed_until < NOW()), OR "
+            "3) Are pending but never acknowledged after 30 minutes (status='pending' AND reminded_at < NOW() - INTERVAL '30 minutes'). "
+            "When sending a reminder, use send_telegram_message_with_reminder_buttons and pass the event_id, "
+            "event_summary, and event_start so a reminder record can be created. "
+            "If there are no events needing reminders, do NOT send a message — just respond with 'No upcoming events.'"
         ),
         "trigger": IntervalTrigger(minutes=30),
     },

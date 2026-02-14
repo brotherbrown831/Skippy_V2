@@ -54,3 +54,20 @@ CREATE TABLE IF NOT EXISTS scheduled_tasks (
     source TEXT NOT NULL DEFAULT 'chat',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Event reminder acknowledgments (Phase 1.3)
+CREATE TABLE IF NOT EXISTS reminder_acknowledgments (
+    reminder_id SERIAL PRIMARY KEY,
+    user_id TEXT NOT NULL DEFAULT 'nolan',
+    event_id TEXT NOT NULL,
+    event_summary TEXT,
+    event_start TIMESTAMPTZ NOT NULL,
+    reminded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    acknowledged_at TIMESTAMPTZ,
+    snoozed_until TIMESTAMPTZ,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_reminders_user_event ON reminder_acknowledgments (user_id, event_id, event_start);
+CREATE INDEX IF NOT EXISTS idx_reminders_status ON reminder_acknowledgments (user_id, status);
