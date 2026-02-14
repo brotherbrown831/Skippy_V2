@@ -13,9 +13,13 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "postgresql://skippy:skippy@postgres:5432/skippy"
 
-    # Home Assistant (future tool use)
+    # Home Assistant
     ha_url: str = "http://homeassistant.local:8123"
     ha_token: str = ""
+    ha_notify_service: str = ""
+
+    # Scheduler
+    scheduler_enabled: bool = True
 
     # Google Calendar
     google_calendar_id: str = ""

@@ -3,6 +3,8 @@ import math
 import time
 from contextlib import asynccontextmanager
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+
 from fastapi import FastAPI
 from langchain_core.messages import HumanMessage
 from psycopg_pool import AsyncConnectionPool
@@ -12,6 +14,8 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 from skippy.agent.graph import build_graph
 from skippy.config import settings
+from skippy.scheduler import start_scheduler, stop_scheduler
+from skippy.web.memories import router as memories_router
 
 logger = logging.getLogger("skippy")
 
@@ -92,12 +96,15 @@ async def lifespan(app: FastAPI):
         await checkpointer.setup()
         app.state.graph = await build_graph(checkpointer)
         logger.info("Skippy agent ready")
+        await start_scheduler(app)
         yield
+        await stop_scheduler(app)
     # Shutdown
     await app.state.pool.close()
 
 
 app = FastAPI(title="Skippy", version="2.0.0", lifespan=lifespan)
+app.include_router(memories_router)
 
 
 # --- Endpoints ---
