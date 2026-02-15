@@ -47,27 +47,30 @@ def test_get_ha_state_nonexistent():
     assert result["success"] is False
 
 
-def test_resolve_entity_exact():
+@pytest.mark.asyncio
+async def test_resolve_entity_exact():
     """Exact entity_id should resolve with high confidence."""
-    result = _resolve_entity_id("sun.sun")
+    result = await _resolve_entity_id("sun.sun")
     assert result["entity_id"] == "sun.sun"
     assert result["confidence"] >= 85
 
 
-def test_resolve_entity_fuzzy():
+@pytest.mark.asyncio
+async def test_resolve_entity_fuzzy():
     """Fuzzy name should resolve to a matching entity."""
     # This depends on real HA entities, so just check the structure
-    result = _resolve_entity_id("sun")
+    result = await _resolve_entity_id("sun")
     assert "entity_id" in result
     assert "confidence" in result
     assert "matched_name" in result
     assert "suggestion" in result
 
 
-def test_resolve_entity_nonsense():
+@pytest.mark.asyncio
+async def test_resolve_entity_nonsense():
     """Complete nonsense should not resolve — raises ValueError or returns low confidence."""
     try:
-        result = _resolve_entity_id("xyzzy_purple_unicorn_42")
+        result = await _resolve_entity_id("xyzzy_purple_unicorn_42")
         # If it returns, confidence should be low
         assert result["confidence"] < 85 or result["entity_id"] == ""
     except ValueError:

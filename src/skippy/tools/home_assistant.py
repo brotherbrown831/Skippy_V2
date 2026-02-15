@@ -17,6 +17,7 @@ import logging
 from datetime import datetime, timedelta
 
 import httpx
+import psycopg
 from langchain_core.tools import tool
 
 from skippy.config import settings

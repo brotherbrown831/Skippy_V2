@@ -6,9 +6,6 @@ from tests.conftest import requires_openai
 from skippy.agent.graph import build_graph
 from skippy.main import ChatMessage, _generate_conversation_id
 
-pytestmark = pytest.mark.asyncio
-
-
 # --- Pure function tests ---
 
 
@@ -34,6 +31,7 @@ class TestGenerateConversationId:
 
 
 @requires_openai
+@pytest.mark.asyncio
 async def test_build_graph():
     """Agent graph should compile with a real checkpointer."""
     from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
