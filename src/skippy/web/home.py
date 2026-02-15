@@ -27,12 +27,12 @@ async def get_dashboard_stats():
             async with conn.cursor() as cur:
                 # Get memory stats
                 await cur.execute(
-                    "SELECT COUNT(*) FROM memories WHERE user_id = 'nolan'"
+                    "SELECT COUNT(*) FROM semantic_memories WHERE user_id = 'nolan'"
                 )
                 total_memories = (await cur.fetchone())[0]
 
                 await cur.execute(
-                    "SELECT COUNT(*) FROM memories WHERE user_id = 'nolan' AND created_at >= NOW() - INTERVAL '7 days'"
+                    "SELECT COUNT(*) FROM semantic_memories WHERE user_id = 'nolan' AND created_at >= NOW() - INTERVAL '7 days'"
                 )
                 recent_memories = (await cur.fetchone())[0]
 

@@ -26,22 +26,34 @@ CREATE INDEX IF NOT EXISTS idx_memories_user_status
     ON semantic_memories (user_id, status)
     WHERE status = 'active';
 
--- Structured people data (Phase 1.1)
+-- Structured people data (Phase 1.1) with identity management (Phase 1.2)
 CREATE TABLE IF NOT EXISTS people (
     person_id SERIAL PRIMARY KEY,
     user_id TEXT NOT NULL DEFAULT 'nolan',
     name TEXT NOT NULL,
+    canonical_name TEXT NOT NULL,
+    aliases JSONB DEFAULT '[]'::jsonb,
+    merged_from INT[] DEFAULT '{}',
     relationship TEXT,
     birthday TEXT,
     address TEXT,
     phone TEXT,
     email TEXT,
     notes TEXT,
+    importance_score FLOAT DEFAULT 0.0,
+    last_mentioned TIMESTAMPTZ,
+    mention_count INT DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_people_user ON people (user_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_people_name_user ON people (user_id, LOWER(name));
+CREATE INDEX IF NOT EXISTS idx_people_aliases ON people USING gin(aliases);
+CREATE INDEX IF NOT EXISTS idx_people_importance ON people (user_id, importance_score DESC, last_mentioned DESC);
+CREATE INDEX IF NOT EXISTS idx_people_phone ON people (user_id, phone)
+  WHERE phone IS NOT NULL AND phone != '';
+CREATE INDEX IF NOT EXISTS idx_people_email ON people (user_id, email)
+  WHERE email IS NOT NULL AND email != '';
+CREATE INDEX IF NOT EXISTS idx_people_last_mentioned ON people (user_id, last_mentioned DESC);
 
 -- Home Assistant Entities
 CREATE TABLE IF NOT EXISTS ha_entities (
