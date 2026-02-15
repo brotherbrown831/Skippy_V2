@@ -147,7 +147,18 @@ async def _extract_and_store_person(
     extracted_fact: str,
     user_id: str,
 ) -> None:
-    """Extract structured person fields from a fact and upsert into the people table."""
+    """Extract structured person fields from a fact and upsert into the people table.
+
+    Uses smart identity resolution:
+    1. Extract name from LLM
+    2. Use _resolve_person_identity() to check for existing person
+    3. If match >=85 confidence → update existing, add extracted name as alias
+    4. If match 70-84 → log suggestion but create new (conservative)
+    5. Otherwise → create new person
+    6. After upsert: increment importance_score
+    """
+    from skippy.tools.people import _resolve_person_identity, _update_person_importance
+
     try:
         response = await client.responses.create(
             model=settings.llm_model,
@@ -165,7 +176,7 @@ async def _extract_and_store_person(
         logger.debug("Person extraction: no name found in fact")
         return
 
-    # Build upsert — only update non-empty fields
+    # Build fields dict
     fields = {
         "relationship": data.get("relationship", ""),
         "birthday": data.get("birthday", ""),
@@ -175,38 +186,118 @@ async def _extract_and_store_person(
         "notes": data.get("notes", ""),
     }
 
-    updates = []
-    for field, val in fields.items():
-        if val:
-            updates.append(f"{field} = EXCLUDED.{field}")
-    updates.append("updated_at = NOW()")
-    set_clause = ", ".join(updates)
-
     try:
+        # Step 1: Check for existing person
+        person_id = None
+        extracted_name_as_alias = False
+
+        try:
+            identity = await _resolve_person_identity(name, user_id)
+
+            if identity["suggestion"]:
+                # 70-84 confidence - log as suggestion but create new (conservative)
+                logger.debug(
+                    "Person extraction suggestion: '%s' (~= '%s' at %.0f%%)",
+                    name, identity["canonical_name"], identity["confidence"]
+                )
+                # Fall through to create new
+            else:
+                # >=85 confidence or exact match - use existing
+                person_id = identity["person_id"]
+                extracted_name_as_alias = True
+                logger.debug(
+                    "Person extraction: matched '%s' to existing '%s' (%.0f%%)",
+                    name, identity["canonical_name"], identity["confidence"]
+                )
+
+        except ValueError:
+            # No match found - will create new
+            pass
+
+        # Step 2: Upsert person
         async with await psycopg.AsyncConnection.connect(
             settings.database_url, autocommit=True
         ) as conn:
             async with conn.cursor() as cur:
-                await cur.execute(
-                    f"""
-                    INSERT INTO people (user_id, name, relationship, birthday, address, phone, email, notes)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (user_id, LOWER(name))
-                    DO UPDATE SET {set_clause}
-                    RETURNING person_id, name;
-                    """,
-                    (
-                        user_id, name,
-                        fields["relationship"] or None,
-                        fields["birthday"] or None,
-                        fields["address"] or None,
-                        fields["phone"] or None,
-                        fields["email"] or None,
-                        fields["notes"] or None,
-                    ),
-                )
-                row = await cur.fetchone()
-                logger.info("Auto-extracted person: id=%s name='%s'", row[0], row[1])
+                if person_id:
+                    # Update existing
+                    updates = []
+                    params = []
+
+                    # Add extracted name as alias if it differs from canonical
+                    if extracted_name_as_alias:
+                        await cur.execute(
+                            "SELECT canonical_name, aliases FROM people WHERE person_id = %s",
+                            (person_id,)
+                        )
+                        row = await cur.fetchone()
+                        if row:
+                            canonical, aliases = row
+                            if name != canonical and name not in (aliases or []):
+                                aliases_list = list(aliases or [])
+                                aliases_list.append(name)
+                                updates.append("aliases = %s")
+                                params.append(json.dumps(aliases_list))
+
+                    # Add provided fields if non-empty
+                    for field, val in fields.items():
+                        if val:
+                            updates.append(f"{field} = %s")
+                            params.append(val)
+
+                    if updates:
+                        updates.append("updated_at = NOW()")
+                        params.append(person_id)
+
+                        await cur.execute(
+                            f"""
+                            UPDATE people
+                            SET {", ".join(updates)}
+                            WHERE person_id = %s
+                            RETURNING person_id, canonical_name
+                            """,
+                            params,
+                        )
+                        row = await cur.fetchone()
+                        if row:
+                            logger.info(
+                                "Auto-extracted: updated person id=%s name='%s'",
+                                row[0], row[1]
+                            )
+
+                else:
+                    # Create new person
+                    await cur.execute(
+                        """
+                        INSERT INTO people (
+                            user_id, name, canonical_name, relationship, birthday,
+                            address, phone, email, notes
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        RETURNING person_id, canonical_name;
+                        """,
+                        (
+                            user_id, name, name,
+                            fields["relationship"] or None,
+                            fields["birthday"] or None,
+                            fields["address"] or None,
+                            fields["phone"] or None,
+                            fields["email"] or None,
+                            fields["notes"] or None,
+                        ),
+                    )
+                    row = await cur.fetchone()
+                    if row:
+                        person_id = row[0]
+                        logger.info(
+                            "Auto-extracted: created person id=%s name='%s'",
+                            row[0], row[1]
+                        )
+
+        # Step 3: Update importance
+        if person_id:
+            await _update_person_importance(person_id)
+
     except Exception:
         logger.exception("Failed to upsert auto-extracted person")
 

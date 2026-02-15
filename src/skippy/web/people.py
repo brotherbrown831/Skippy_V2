@@ -1,3 +1,4 @@
+import json
 import logging
 from datetime import datetime
 
@@ -22,11 +23,12 @@ async def get_people():
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT person_id, name, relationship, birthday, address,
-                           phone, email, notes, created_at, updated_at
+                    SELECT person_id, canonical_name, aliases, relationship, birthday,
+                           address, phone, email, notes, importance_score,
+                           last_mentioned, mention_count, created_at, updated_at
                     FROM people
                     WHERE user_id = %s
-                    ORDER BY name;
+                    ORDER BY canonical_name;
                     """,
                     ("nolan",),
                 )
@@ -46,6 +48,64 @@ async def get_people():
                 ]
     except Exception:
         logger.exception("Failed to fetch people")
+        return []
+
+
+@router.get("/api/people/important")
+async def get_important_people():
+    """Return important and recently mentioned people."""
+    try:
+        async with await psycopg.AsyncConnection.connect(
+            settings.database_url, autocommit=True
+        ) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT person_id, canonical_name, aliases, relationship,
+                           importance_score, last_mentioned, mention_count
+                    FROM people
+                    WHERE user_id = %s
+                      AND (importance_score >= 50 OR last_mentioned >= NOW() - INTERVAL '7 days')
+                    ORDER BY importance_score DESC, last_mentioned DESC
+                    LIMIT 10;
+                    """,
+                    ("nolan",),
+                )
+                rows = await cur.fetchall()
+                columns = [desc.name for desc in cur.description]
+
+                return [
+                    {
+                        col: (
+                            val.isoformat()
+                            if isinstance(val, datetime)
+                            else val
+                        )
+                        for col, val in zip(columns, row)
+                    }
+                    for row in rows
+                ]
+    except Exception:
+        logger.exception("Failed to fetch important people")
+        return []
+
+
+@router.get("/api/people/duplicates")
+async def get_duplicate_clusters():
+    """Return potential duplicate person clusters."""
+    try:
+        from skippy.tools.people import find_duplicate_people
+
+        result = await find_duplicate_people()
+        try:
+            # find_duplicate_people returns JSON string
+            clusters = json.loads(result) if isinstance(result, str) else result
+            return clusters if isinstance(clusters, list) else []
+        except (json.JSONDecodeError, TypeError):
+            return []
+
+    except Exception:
+        logger.exception("Failed to find duplicate people")
         return []
 
 
