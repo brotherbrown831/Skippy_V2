@@ -1,0 +1,18 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configure Skippy V2",
+        "description": "Enter the webhook URL for your Skippy V2 instance",
+        "data": {
+          "webhook_url": "Webhook URL",
+          "timeout": "Timeout (seconds)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to Skippy V2. Check the URL.",
+      "unknown": "Unexpected error occurred"
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "domain": "skippy_v2",
+  "name": "Skippy V2 AI Assistant",
+  "codeowners": ["@brotherbrown831"],
+  "config_flow": true,
+  "documentation": "https://github.com/brotherbrown831/Skippy_V2",
+  "integration_type": "service",
+  "iot_class": "local_polling",
+  "requirements": [],
+  "version": "2.0.0"
+}

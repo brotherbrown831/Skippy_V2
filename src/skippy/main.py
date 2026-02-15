@@ -50,6 +50,7 @@ class VoiceRequest(BaseModel):
 class VoiceResponse(BaseModel):
     response: str
     response_text: str = ""
+    continue_conversation: bool = False
 
 
 class ChatMessage(BaseModel):
@@ -152,7 +153,16 @@ async def voice_endpoint(request: VoiceRequest):
     )
 
     response_text = result["messages"][-1].content
-    return VoiceResponse(response=response_text, response_text=response_text)
+
+    # Detect if response is a question (ends with ?, ;, or ？)
+    # This signals the HA voice pipeline to keep the microphone active for follow-up
+    continue_conversation = response_text.strip().endswith(("?", ";", "？"))
+
+    return VoiceResponse(
+        response=response_text,
+        response_text=response_text,
+        continue_conversation=continue_conversation,
+    )
 
 
 @app.post("/webhook/v1/chat/completions", response_model=ChatResponse)
