@@ -1,16 +1,23 @@
-"""Web API for Home Assistant entities management."""
+"""Web API and UI for Home Assistant entities management."""
 
 import json
 import logging
 
 import psycopg
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import HTMLResponse
 
 from skippy.config import settings
 
 logger = logging.getLogger("skippy")
 
 router = APIRouter()
+
+
+@router.get("/entities", response_class=HTMLResponse)
+async def entities_page():
+    """Serve the HA entities viewer page."""
+    return ENTITIES_PAGE_HTML
 
 
 @router.get("/api/ha_entities")
@@ -145,3 +152,187 @@ async def update_ha_entity_api(entity_id: str, data: dict):
     except Exception:
         logger.exception(f"Failed to update entity {entity_id}")
         raise HTTPException(status_code=500, detail="Failed to update entity")
+
+
+ENTITIES_PAGE_HTML = """<!DOCTYPE html>
+<html>
+<head>
+    <title>Home Assistant Entities</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #0f1117;
+            color: #e0e0e0;
+        }
+        h1 { color: #7eb8ff; margin-top: 0; margin-bottom: 8px; }
+        .subtitle { color: #888; font-size: 0.9em; margin-bottom: 20px; }
+        .controls {
+            display: flex; gap: 12px; flex-wrap: wrap;
+            align-items: center; margin-bottom: 20px;
+        }
+        select, input {
+            background: #1a1d27;
+            color: #e0e0e0;
+            border: 1px solid #333;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 0.85em;
+        }
+        .count { color: #888; font-size: 0.85em; margin-left: auto; }
+        table {
+            width: 100%;
+            background: #1a1d27;
+            border-collapse: collapse;
+            border-radius: 6px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        }
+        thead {
+            background: #0f1117;
+            font-weight: bold;
+            border-bottom: 2px solid #2a2d37;
+        }
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+        }
+        tbody tr:hover {
+            background: #222530;
+        }
+        tbody tr:nth-child(even) {
+            background: #161a22;
+        }
+        .domain-badge {
+            display: inline-block;
+            background: #1f3d3d;
+            color: #89ddff;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 0.75em;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .enabled { color: #90ee90; }
+        .disabled { color: #ff6b6b; }
+        .empty { color: #555; }
+        @media (max-width: 768px) {
+            .hide-mobile { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <h1>🏠 Home Assistant Entities</h1>
+    <p class="subtitle">All your Smart Home devices and integrations</p>
+
+    <div class="controls">
+        <select id="domain-filter">
+            <option value="">All Domains</option>
+        </select>
+        <select id="enabled-filter">
+            <option value="">All Status</option>
+            <option value="true">Enabled Only</option>
+            <option value="false">Disabled Only</option>
+        </select>
+        <input type="text" id="search-input" placeholder="Search entities..." style="flex: 1; max-width: 300px;">
+        <div class="count"><span id="entity-count">-</span> entities</div>
+    </div>
+
+    <table id="entities-table">
+        <thead>
+            <tr>
+                <th>Entity ID</th>
+                <th>Friendly Name</th>
+                <th>Domain</th>
+                <th class="hide-mobile">Area</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody id="entities-body">
+            <tr><td colspan="5" class="empty">Loading...</td></tr>
+        </tbody>
+    </table>
+
+    <script>
+        let allEntities = [];
+        let domains = new Set();
+
+        async function loadEntities(filters = {}) {
+            try {
+                const params = new URLSearchParams();
+                if (filters.domain) params.append('domain', filters.domain);
+                if (filters.enabled !== undefined) params.append('enabled', filters.enabled);
+                if (filters.search) params.append('search', filters.search);
+
+                const response = await fetch('/api/ha_entities?' + params);
+                allEntities = await response.json();
+
+                // Extract unique domains
+                allEntities.forEach(e => domains.add(e.domain));
+                updateDomainFilter();
+                renderTable();
+            } catch (error) {
+                console.error('Failed to load entities:', error);
+                document.getElementById('entities-body').innerHTML = '<tr><td colspan="5" class="empty">Error loading entities</td></tr>';
+            }
+        }
+
+        function updateDomainFilter() {
+            const select = document.getElementById('domain-filter');
+            const currentValue = select.value;
+            select.innerHTML = '<option value="">All Domains</option>';
+            Array.from(domains).sort().forEach(domain => {
+                const option = document.createElement('option');
+                option.value = domain;
+                option.textContent = domain;
+                select.appendChild(option);
+            });
+            select.value = currentValue;
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('entities-body');
+            if (allEntities.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="empty">No entities found</td></tr>';
+                document.getElementById('entity-count').textContent = '0';
+                return;
+            }
+
+            tbody.innerHTML = allEntities.map(e => `
+                <tr>
+                    <td><code style="color: #89ddff;">${e.entity_id}</code></td>
+                    <td>${e.friendly_name || e.entity_id}</td>
+                    <td><span class="domain-badge">${e.domain}</span></td>
+                    <td class="hide-mobile">${e.area || '-'}</td>
+                    <td><span class="${e.enabled ? 'enabled' : 'disabled'}">${e.enabled ? '✓ Enabled' : '✗ Disabled'}</span></td>
+                </tr>
+            `).join('');
+
+            document.getElementById('entity-count').textContent = allEntities.length;
+        }
+
+        // Event listeners for filters
+        document.getElementById('domain-filter').addEventListener('change', () => applyFilters());
+        document.getElementById('enabled-filter').addEventListener('change', () => applyFilters());
+        document.getElementById('search-input').addEventListener('input', () => applyFilters());
+
+        function applyFilters() {
+            const filters = {
+                domain: document.getElementById('domain-filter').value || undefined,
+                enabled: document.getElementById('enabled-filter').value ?
+                    document.getElementById('enabled-filter').value === 'true' : undefined,
+                search: document.getElementById('search-input').value || undefined
+            };
+            loadEntities(filters);
+        }
+
+        // Initial load
+        loadEntities();
+        // Auto-refresh every 60 seconds
+        setInterval(() => applyFilters(), 60000);
+    </script>
+</body>
+</html>
+"""

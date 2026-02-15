@@ -220,7 +220,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
             </a>
 
             <!-- People Card -->
-            <a href="/memories?tab=people" class="card people">
+            <a href="/people" class="card people">
                 <div class="card-icon">👥</div>
                 <h2>People</h2>
                 <p>Contact management with fuzzy deduplication and importance ranking</p>
@@ -238,7 +238,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
             </a>
 
             <!-- HA Entities Card -->
-            <a href="/memories?tab=entities" class="card entities">
+            <a href="/entities" class="card entities">
                 <div class="card-icon">🏠</div>
                 <h2>Home Assistant</h2>
                 <p>Device management with aliases and natural language control</p>
