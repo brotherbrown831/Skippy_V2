@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import math
 import time
@@ -18,6 +19,7 @@ from skippy.scheduler import start_scheduler, stop_scheduler
 from skippy.telegram import start_telegram, stop_telegram
 from skippy.web.memories import router as memories_router
 from skippy.web.people import router as people_router
+from skippy.web.ha_entities import router as ha_entities_router
 
 logger = logging.getLogger("skippy")
 
@@ -99,6 +101,9 @@ async def lifespan(app: FastAPI):
         app.state.graph = await build_graph(checkpointer)
         logger.info("Skippy agent ready")
         await start_scheduler(app)
+        # Sync HA entities on startup
+        from skippy.tools.ha_entity_sync import sync_ha_entities_to_db
+        asyncio.create_task(sync_ha_entities_to_db())
         await start_telegram(app)
         yield
         await stop_telegram(app)
@@ -110,6 +115,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Skippy", version="2.0.0", lifespan=lifespan)
 app.include_router(memories_router)
 app.include_router(people_router)
+app.include_router(ha_entities_router)
 
 
 # --- Endpoints ---

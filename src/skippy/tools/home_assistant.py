@@ -181,12 +181,18 @@ def _get_cached_entities() -> list[dict]:
     return _entity_cache["entities"]
 
 
-def _resolve_entity_id(
+async def _resolve_entity_id(
     entity_id_or_name: str,
     domain: str | None = None,
     threshold: int = 85
 ) -> dict:
-    """Resolve fuzzy entity name to exact entity_id.
+    """Resolve fuzzy entity name to exact entity_id with database alias support.
+
+    Resolution priority:
+    1. Exact database alias match
+    2. Fuzzy database alias match (85+)
+    3. Exact entity_id match
+    4. Fuzzy match on entity_id/friendly_name from cache
 
     Args:
         entity_id_or_name: User input (e.g., 'office light' or 'light.officesw')
@@ -209,7 +215,73 @@ def _resolve_entity_id(
     # Normalize input
     query = entity_id_or_name.strip().lower()
 
-    # Get cached entities
+    # Step 1: Check database for alias matches (exact, then fuzzy)
+    try:
+        async with await psycopg.AsyncConnection.connect(settings.database_url) as conn:
+            async with conn.cursor() as cur:
+                # Exact alias match
+                domain_filter = "AND domain = %s" if domain else ""
+                params = ["nolan", query]
+                if domain:
+                    params.append(domain)
+
+                await cur.execute(
+                    f"""
+                    SELECT entity_id, friendly_name
+                    FROM ha_entities
+                    WHERE user_id = %s
+                      AND enabled = TRUE
+                      AND %s = ANY(SELECT LOWER(alias::text) FROM jsonb_array_elements_text(aliases) AS alias)
+                      {domain_filter}
+                    LIMIT 1
+                    """,
+                    params,
+                )
+
+                row = await cur.fetchone()
+                if row:
+                    return {
+                        "entity_id": row[0],
+                        "confidence": 100.0,
+                        "matched_name": row[1] or row[0],
+                        "suggestion": False,
+                    }
+
+                # Fuzzy match in database aliases
+                domain_filter = "AND domain = %s" if domain else ""
+                params = ["nolan"]
+                if domain:
+                    params.append(domain)
+
+                await cur.execute(
+                    f"""
+                    SELECT entity_id, friendly_name, aliases
+                    FROM ha_entities
+                    WHERE user_id = %s
+                      AND enabled = TRUE
+                      {domain_filter}
+                    ORDER BY entity_id
+                    """,
+                    params,
+                )
+
+                rows = await cur.fetchall()
+                for row in rows:
+                    aliases = row[2] or []
+                    for alias in aliases:
+                        score = fuzz.ratio(query, alias.lower())
+                        if score >= 85:
+                            return {
+                                "entity_id": row[0],
+                                "confidence": float(score),
+                                "matched_name": alias,
+                                "suggestion": False,
+                            }
+
+    except Exception:
+        logger.exception("Failed to check database aliases, falling back to fuzzy matching")
+
+    # Step 2: Fall back to cached entities fuzzy matching
     entities = _get_cached_entities()
 
     # Check for exact entity_id match first (fast path)
@@ -365,7 +437,7 @@ def send_sms(message: str) -> str:
 
 
 @tool
-def get_entity_state(entity_id: str) -> str:
+async def get_entity_state(entity_id: str) -> str:
     """Get the current state of any Home Assistant entity (sensor, light, switch, etc).
 
     Use this to check device status, sensor readings, or any entity state.
@@ -376,7 +448,7 @@ def get_entity_state(entity_id: str) -> str:
     """
     # Fuzzy entity resolution (no domain filter - searches all)
     try:
-        resolved = _resolve_entity_id(entity_id, domain=None, threshold=85)
+        resolved = await _resolve_entity_id(entity_id, domain=None, threshold=85)
         if resolved["suggestion"]:
             return f"Did you mean '{resolved['matched_name']}' ({resolved['entity_id']})?"
         entity_id = resolved["entity_id"]
@@ -409,7 +481,7 @@ def get_entity_state(entity_id: str) -> str:
 
 
 @tool
-def call_service(
+async def call_service(
     domain: str,
     service: str,
     entity_id: str,
@@ -428,7 +500,7 @@ def call_service(
     """
     # Fuzzy entity resolution (no domain filter - user specifies domain via parameter)
     try:
-        resolved = _resolve_entity_id(entity_id, domain=None, threshold=85)
+        resolved = await _resolve_entity_id(entity_id, domain=None, threshold=85)
         if resolved["suggestion"]:
             return f"Did you mean '{resolved['matched_name']}' ({resolved['entity_id']})?"
         entity_id = resolved["entity_id"]
@@ -456,7 +528,7 @@ def call_service(
 
 
 @tool
-def turn_on_light(
+async def turn_on_light(
     entity_id: str,
     brightness: int | None = None,
     color: str | None = None
@@ -470,7 +542,7 @@ def turn_on_light(
     """
     # Fuzzy entity resolution
     try:
-        resolved = _resolve_entity_id(entity_id, domain="light", threshold=85)
+        resolved = await _resolve_entity_id(entity_id, domain="light", threshold=85)
 
         # Handle suggestions (70-84 score)
         if resolved["suggestion"]:
@@ -520,7 +592,7 @@ def turn_on_light(
 
 
 @tool
-def turn_off_light(entity_id: str) -> str:
+async def turn_off_light(entity_id: str) -> str:
     """Turn off a light.
 
     Args:
@@ -528,7 +600,7 @@ def turn_off_light(entity_id: str) -> str:
     """
     # Fuzzy entity resolution
     try:
-        resolved = _resolve_entity_id(entity_id, domain="light", threshold=85)
+        resolved = await _resolve_entity_id(entity_id, domain="light", threshold=85)
 
         if resolved["suggestion"]:
             return (f"Did you mean '{resolved['matched_name']}' ({resolved['entity_id']})? "
@@ -552,7 +624,7 @@ def turn_off_light(entity_id: str) -> str:
 
 
 @tool
-def turn_on_switch(entity_id: str) -> str:
+async def turn_on_switch(entity_id: str) -> str:
     """Turn on a switch.
 
     Args:
@@ -560,7 +632,7 @@ def turn_on_switch(entity_id: str) -> str:
     """
     # Fuzzy entity resolution
     try:
-        resolved = _resolve_entity_id(entity_id, domain="switch", threshold=85)
+        resolved = await _resolve_entity_id(entity_id, domain="switch", threshold=85)
         if resolved["suggestion"]:
             return f"Did you mean '{resolved['matched_name']}' ({resolved['entity_id']})?"
         entity_id = resolved["entity_id"]
@@ -572,7 +644,7 @@ def turn_on_switch(entity_id: str) -> str:
 
 
 @tool
-def turn_off_switch(entity_id: str) -> str:
+async def turn_off_switch(entity_id: str) -> str:
     """Turn off a switch.
 
     Args:
@@ -580,7 +652,7 @@ def turn_off_switch(entity_id: str) -> str:
     """
     # Fuzzy entity resolution
     try:
-        resolved = _resolve_entity_id(entity_id, domain="switch", threshold=85)
+        resolved = await _resolve_entity_id(entity_id, domain="switch", threshold=85)
         if resolved["suggestion"]:
             return f"Did you mean '{resolved['matched_name']}' ({resolved['entity_id']})?"
         entity_id = resolved["entity_id"]
@@ -597,7 +669,7 @@ def turn_off_switch(entity_id: str) -> str:
 
 
 @tool
-def set_thermostat(
+async def set_thermostat(
     entity_id: str,
     temperature: float,
     mode: str | None = None
@@ -611,7 +683,7 @@ def set_thermostat(
     """
     # Fuzzy entity resolution
     try:
-        resolved = _resolve_entity_id(entity_id, domain="climate", threshold=85)
+        resolved = await _resolve_entity_id(entity_id, domain="climate", threshold=85)
         if resolved["suggestion"]:
             return f"Did you mean '{resolved['matched_name']}' ({resolved['entity_id']})?"
         entity_id = resolved["entity_id"]
@@ -648,7 +720,7 @@ def set_thermostat(
 
 
 @tool
-def lock_door(entity_id: str) -> str:
+async def lock_door(entity_id: str) -> str:
     """Lock a door.
 
     Args:
@@ -656,7 +728,7 @@ def lock_door(entity_id: str) -> str:
     """
     # Fuzzy entity resolution
     try:
-        resolved = _resolve_entity_id(entity_id, domain="lock", threshold=85)
+        resolved = await _resolve_entity_id(entity_id, domain="lock", threshold=85)
         if resolved["suggestion"]:
             return f"Did you mean '{resolved['matched_name']}' ({resolved['entity_id']})?"
         entity_id = resolved["entity_id"]
@@ -668,7 +740,7 @@ def lock_door(entity_id: str) -> str:
 
 
 @tool
-def unlock_door(entity_id: str) -> str:
+async def unlock_door(entity_id: str) -> str:
     """Unlock a door.
 
     Args:
@@ -676,7 +748,7 @@ def unlock_door(entity_id: str) -> str:
     """
     # Fuzzy entity resolution
     try:
-        resolved = _resolve_entity_id(entity_id, domain="lock", threshold=85)
+        resolved = await _resolve_entity_id(entity_id, domain="lock", threshold=85)
         if resolved["suggestion"]:
             return f"Did you mean '{resolved['matched_name']}' ({resolved['entity_id']})?"
         entity_id = resolved["entity_id"]
@@ -693,7 +765,7 @@ def unlock_door(entity_id: str) -> str:
 
 
 @tool
-def open_cover(entity_id: str) -> str:
+async def open_cover(entity_id: str) -> str:
     """Open a cover (blinds, garage door, etc).
 
     Args:
@@ -701,7 +773,7 @@ def open_cover(entity_id: str) -> str:
     """
     # Fuzzy entity resolution
     try:
-        resolved = _resolve_entity_id(entity_id, domain="cover", threshold=85)
+        resolved = await _resolve_entity_id(entity_id, domain="cover", threshold=85)
         if resolved["suggestion"]:
             return f"Did you mean '{resolved['matched_name']}' ({resolved['entity_id']})?"
         entity_id = resolved["entity_id"]
@@ -713,7 +785,7 @@ def open_cover(entity_id: str) -> str:
 
 
 @tool
-def close_cover(entity_id: str) -> str:
+async def close_cover(entity_id: str) -> str:
     """Close a cover (blinds, garage door, etc).
 
     Args:
@@ -721,7 +793,7 @@ def close_cover(entity_id: str) -> str:
     """
     # Fuzzy entity resolution
     try:
-        resolved = _resolve_entity_id(entity_id, domain="cover", threshold=85)
+        resolved = await _resolve_entity_id(entity_id, domain="cover", threshold=85)
         if resolved["suggestion"]:
             return f"Did you mean '{resolved['matched_name']}' ({resolved['entity_id']})?"
         entity_id = resolved["entity_id"]
@@ -733,7 +805,7 @@ def close_cover(entity_id: str) -> str:
 
 
 @tool
-def set_cover_position(entity_id: str, position: int) -> str:
+async def set_cover_position(entity_id: str, position: int) -> str:
     """Set cover position (blinds, shades, etc).
 
     Args:
@@ -742,7 +814,7 @@ def set_cover_position(entity_id: str, position: int) -> str:
     """
     # Fuzzy entity resolution
     try:
-        resolved = _resolve_entity_id(entity_id, domain="cover", threshold=85)
+        resolved = await _resolve_entity_id(entity_id, domain="cover", threshold=85)
         if resolved["suggestion"]:
             return f"Did you mean '{resolved['matched_name']}' ({resolved['entity_id']})?"
         entity_id = resolved["entity_id"]

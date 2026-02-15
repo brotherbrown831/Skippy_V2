@@ -132,8 +132,7 @@ MEMORY_EVALUATION_PROMPT = """You are a memory evaluator for a long-term semanti
 
 Your job is to:
 1. Decide whether a conversation contains information worth storing long-term
-2. If so, rewrite the information into a SINGLE, self-contained memory optimized for semantic \
-retrieval using embeddings
+2. If so, extract EACH DISCRETE FACT as a separate memory, rewritten to be self-contained and optimized for semantic retrieval using embeddings
 
 STORE information if it includes:
 - Explicit direction from the user to store/remember information
@@ -152,30 +151,29 @@ DO NOT STORE:
 - Temporary states
 - Generic or impersonal information
 
-CRITICAL RULES FOR extracted_fact:
-- Rewrite the fact so it is understandable without conversation context
-- ALWAYS include a semantic category prefix at the beginning
+CRITICAL RULES FOR FACT EXTRACTION:
+- Extract MULTIPLE discrete facts if the exchange contains multiple pieces of storable information
+- Each fact should focus on ONE topic/category
+- Never combine unrelated facts into a single memory (e.g., don't combine "likes coffee" and "birthday is March 15")
+- Rewrite each fact so it is understandable without conversation context
 - Use clear, natural language
 - Prefer complete sentences
-
-Required prefixes:
-Family:
-Person:
-Preference:
-Project:
-Technical:
-Event:
-Recurring Event:
-Fact:
 
 Respond with JSON ONLY:
 {
   "should_store": true/false,
   "reason": "brief explanation",
-  "extracted_fact": "rewritten fact or null",
-  "category": "family | person | preference | project | technical | event | recurring_event | fact | null",
-  "confidence": 0.0-1.0
-}"""
+  "extracted_facts": [
+    {
+      "content": "clear, self-contained fact",
+      "category": "family | person | preference | project | technical | event | recurring_event | fact",
+      "confidence": 0.0-1.0
+    }
+  ]
+}
+
+If should_store is false, return an empty array for extracted_facts.
+"""
 
 PERSON_EXTRACTION_PROMPT = """You are a structured data extractor. Given a fact about a person, \
 extract the following fields into JSON. Only include fields that are explicitly stated — do not \

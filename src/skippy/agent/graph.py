@@ -107,9 +107,16 @@ async def evaluate_memory_node(state: AgentState, config: RunnableConfig) -> dic
 
     conversation_id = config.get("configurable", {}).get("thread_id", "unknown")
 
-    # Build conversation history for context
+    # Build conversation history for context (sliding window)
     history = []
-    for msg in messages[:-2]:  # Exclude the current exchange
+    context_messages = messages[:-2]  # Exclude the current exchange
+    # Only include last N messages to prevent re-evaluating old facts
+    recent_context = (
+        context_messages[-settings.memory_context_window:]
+        if len(context_messages) > settings.memory_context_window
+        else context_messages
+    )
+    for msg in recent_context:
         role = "assistant" if isinstance(msg, AIMessage) else "user"
         history.append({"role": role, "content": msg.content})
 

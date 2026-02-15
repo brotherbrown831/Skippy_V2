@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     memory_similarity_threshold: float = 0.15
     memory_retrieval_limit: int = 5
     memory_dedup_threshold: float = 0.8
+    memory_context_window: int = 6
 
     model_config = {"env_file": ".env"}
 

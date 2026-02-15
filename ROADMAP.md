@@ -11,7 +11,10 @@ What's already working:
 - FastAPI backend with voice webhook + OpenAI-compatible chat endpoint
 - PostgreSQL 17 + pgvector semantic memory (store, retrieve, dedup)
 - langgraph-checkpoint-postgres for conversation persistence
-- **Home Assistant** voice integration via Wyoming satellites + REST API with fuzzy entity matching (type "office lights" instead of `light.office_lights`)
+- **Home Assistant** voice integration via Wyoming satellites + persistent entity tracking with aliases/rules
+  - REST API with 3-tier entity resolution (exact alias → fuzzy alias → fuzzy friendly_name)
+  - Automatic sync every 30 min + manual trigger + startup sync
+  - Web dashboard for entity management (823 entities synced)
 - **Telegram bot** with long-polling (receive + send messages)
 - Docker Compose deployment with dev hot-reload
 - Sarcastic Skippy personality with voice/chat/Telegram modes
@@ -23,8 +26,8 @@ What's already working:
 - SMS notifications via Twilio
 - APScheduler task engine (recurring tasks, one-time reminders, timers, direct-function routines)
 - Structured people database with auto-extraction + Google Contacts sync
-- Unified Memory Bank web dashboard (semantic memories + people)
-- **42 tools** across 10 modules
+- Unified web dashboard (semantic memories + people + HA entities tabs)
+- **45 tools** across 11 modules
 - **Integration test suite** — 86 tests hitting real services (pytest + pytest-asyncio)
 
 ---
@@ -40,8 +43,15 @@ What's already working:
 - 5 CRUD tools (add, get, search, update, list)
 - Auto-extraction: memory evaluator detects person/family facts and upserts into people table
 - **Google Contacts sync**: daily auto-sync at 2 AM + on-demand `sync_contacts_now` tool (253 contacts imported)
-- Unified Memory Bank web dashboard with tabbed view
-- **Home Assistant fuzzy entity matching**: All 14 HA device control tools support natural language entity names (multi-tier confidence: 85+ auto-use, 70-84 suggest, <70 reject, 5-min entity cache)
+- **Home Assistant Entities table** (entity_id, domain, friendly_name, area, device_class)
+  - User-defined aliases (JSON array for matching)
+  - Behavior rules (JSON: confirmation_required, never_auto_turn_off, allowed_hours, defaults, auto_off_minutes)
+  - 3 new tools: `sync_ha_entities_now`, `search_ha_entities`, `update_ha_entity`
+  - Automatic sync every 30 minutes + manual trigger + startup sync (823 entities synced)
+  - Enhanced entity resolution: exact alias (100%) → fuzzy alias (85+) → fuzzy friendly_name
+- Unified web dashboard with 3 tabs (Semantic Memories, People, HA Entities)
+  - HA Entities tab with domain/status filters and sync button
+  - Entity view, edit, and toggle functionality
 
 **Remaining:**
 - Events table (holiday, recurring, one-time)

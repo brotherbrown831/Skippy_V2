@@ -56,4 +56,10 @@ DIRECT_ROUTINES = [
         "func": "skippy.tools.contact_sync:sync_google_contacts_to_people",
         "trigger": CronTrigger(hour=2, minute=0, timezone=settings.timezone),
     },
+    {
+        "task_id": "ha-entities-sync",
+        "name": "Home Assistant Entities Sync",
+        "func": "skippy.tools.ha_entity_sync:sync_ha_entities_to_db",
+        "trigger": IntervalTrigger(minutes=30),
+    },
 ]

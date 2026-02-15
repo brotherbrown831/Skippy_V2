@@ -198,6 +198,7 @@ MEMORIES_PAGE_HTML = """\
 <div class="tabs">
   <div class="tab active" data-tab="memories">Semantic Memories</div>
   <div class="tab" data-tab="people">People</div>
+  <div class="tab" data-tab="entities">HA Entities</div>
 </div>
 
 <!-- Memories Tab -->
@@ -258,6 +259,42 @@ MEMORIES_PAGE_HTML = """\
   </table>
 </div>
 
+<!-- HA Entities Tab -->
+<div id="tab-entities" class="tab-panel">
+  <div class="controls">
+    <select id="entity-domain">
+      <option value="">All Domains</option>
+      <option value="light">Lights</option>
+      <option value="switch">Switches</option>
+      <option value="climate">Climate</option>
+      <option value="sensor">Sensors</option>
+      <option value="lock">Locks</option>
+      <option value="cover">Covers</option>
+    </select>
+    <select id="entity-status">
+      <option value="">All Status</option>
+      <option value="true">Enabled</option>
+      <option value="false">Disabled</option>
+    </select>
+    <button onclick="syncEntities()" style="background: #1a1d27; border: 1px solid #333; color: #7eb8ff; padding: 6px 12px; border-radius: 4px; cursor: pointer;">🔄 Sync Now</button>
+    <span class="count" id="ent-count"></span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Domain</th>
+        <th>Entity ID</th>
+        <th>Name</th>
+        <th>Area</th>
+        <th>Aliases</th>
+        <th class="hide-mobile">Status</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="ent-tbody"></tbody>
+  </table>
+</div>
+
 <script>
 /* --- Tab switching --- */
 document.querySelectorAll('.tab').forEach(tab => {
@@ -267,6 +304,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     tab.classList.add('active');
     document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
     if (tab.dataset.tab === 'people') loadPeople();
+    if (tab.dataset.tab === 'entities') loadEntities();
   });
 });
 
@@ -355,6 +393,68 @@ function fmtDate(iso) {
   const d = new Date(iso);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
+
+/* --- HA Entities --- */
+const entDomain = document.getElementById('entity-domain');
+const entStatus = document.getElementById('entity-status');
+const entTbody = document.getElementById('ent-tbody');
+const entCount = document.getElementById('ent-count');
+let allEntities = [];
+
+async function loadEntities() {
+  try {
+    const res = await fetch('/api/ha_entities');
+    allEntities = await res.json();
+    filterEntities();
+  } catch (err) {
+    entTbody.innerHTML = '<tr><td colspan="7">Failed to load entities.</td></tr>';
+  }
+}
+
+function filterEntities() {
+  const domain = entDomain.value;
+  const status = entStatus.value;
+
+  const filtered = allEntities.filter(e => {
+    if (domain && e.domain !== domain) return false;
+    if (status !== '' && (e.enabled ? 'true' : 'false') !== status) return false;
+    return true;
+  });
+
+  entCount.textContent = filtered.length + ' entit' + (filtered.length === 1 ? 'y' : 'ies');
+  entTbody.innerHTML = filtered.map(e => `
+    <tr>
+      <td><span class="badge" style="background: #1a1d27; color: #7eb8ff;">${e.domain}</span></td>
+      <td><code style="background: #0a0d17; padding: 2px 6px; border-radius: 3px;">${esc(e.entity_id)}</code></td>
+      <td>${esc(e.friendly_name)}</td>
+      <td>${esc(e.area) || e()}</td>
+      <td>${(e.aliases || []).length > 0 ? e.aliases.join(', ') : e()}</td>
+      <td class="hide-mobile" style="color: ${e.enabled ? '#48bb78' : '#888'};">${e.enabled ? '✓ Enabled' : '✗ Disabled'}</td>
+      <td><button class="btn-del" onclick="deleteEntity('${e.entity_id}')">Delete</button></td>
+    </tr>
+  `).join('');
+}
+
+async function syncEntities() {
+  if (!confirm('Sync all entities from Home Assistant?')) return;
+  try {
+    const res = await fetch('/api/ha_entities/sync', { method: 'POST' });
+    const result = await res.json();
+    alert(`Synced ${result.synced} entities, disabled ${result.disabled}`);
+    loadEntities();
+  } catch (err) {
+    alert('Sync failed: ' + err.message);
+  }
+}
+
+async function deleteEntity(entityId) {
+  if (!confirm('Disable this entity?')) return;
+  await fetch('/api/ha_entities/' + encodeURIComponent(entityId), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: false }) });
+  loadEntities();
+}
+
+entDomain.addEventListener('change', filterEntities);
+entStatus.addEventListener('change', filterEntities);
 
 /* --- Init --- */
 loadMemories();

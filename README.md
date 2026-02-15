@@ -66,7 +66,7 @@ An AI personal assistant with long-term semantic memory, built with LangGraph, F
 | Telegram | Telegram Bot API (long polling) |
 | Deployment | Docker Compose |
 
-## Tools (42 total)
+## Tools (45 total)
 
 | Module | Tools | Description |
 |--------|-------|-------------|
@@ -77,6 +77,7 @@ An AI personal assistant with long-term semantic memory, built with LangGraph, F
 | `scheduler` | 4 | Recurring tasks, reminders, timers |
 | `people` | 5 | Structured people database CRUD |
 | `contact_sync` | 1 | Google Contacts → People table sync (on-demand + scheduled) |
+| `ha_entity_sync` | 3 | Manage HA entities: sync from HA, search with aliases, update customizations |
 | `telegram` | 2 | Receive messages via polling, send notifications |
 | `testing` | 1 | Run pytest suite and email results |
 
@@ -128,8 +129,9 @@ An AI personal assistant with long-term semantic memory, built with LangGraph, F
     │   ├── people.py            # Structured people database
     │   └── testing.py           # Run test suite + email results
     └── web/
-        ├── memories.py          # Memory Bank dashboard (tabbed)
-        └── people.py            # People API endpoints
+        ├── memories.py          # Unified dashboard (Memories, People, HA Entities tabs)
+        ├── people.py            # People API endpoints
+        └── ha_entities.py       # HA Entities API endpoints
 ```
 
 ## Prerequisites
@@ -267,9 +269,12 @@ Skippy uses long polling, so no public webhook is required.
 | `/health` | GET | Health check |
 | `/webhook/skippy` | POST | Voice endpoint (HA custom component format) |
 | `/webhook/v1/chat/completions` | POST | OpenAI-compatible chat (for OpenWebUI) |
-| `/memories` | GET | Memory Bank web dashboard |
+| `/memories` | GET | Unified dashboard (tabbed: memories, people, HA entities) |
 | `/api/memories` | GET | Semantic memories JSON API |
 | `/api/people` | GET | People database JSON API |
+| `/api/ha_entities` | GET | Home Assistant entities JSON API |
+| `/api/ha_entities/sync` | POST | Trigger manual sync of all HA entities |
+| `/api/ha_entities/{entity_id}` | PUT | Update entity customizations (aliases, rules, notes, enabled) |
 
 ### Voice Endpoint Format
 
@@ -347,8 +352,9 @@ All configuration is via environment variables (`.env` file):
 
 ## Database Schema
 
-The `db/init.sql` file creates the schema automatically on first run. The main table:
+The `db/init.sql` file creates the schema automatically on first run. Main tables:
 
+**semantic_memories** — Semantic facts extracted from conversations
 ```sql
 CREATE TABLE semantic_memories (
     memory_id SERIAL PRIMARY KEY,
@@ -362,6 +368,25 @@ CREATE TABLE semantic_memories (
     category TEXT,                   -- family, person, preference, project, technical, etc.
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+**ha_entities** — Home Assistant entities with user customizations
+```sql
+CREATE TABLE ha_entities (
+    entity_id TEXT PRIMARY KEY,      -- "light.office", "switch.garage"
+    domain TEXT NOT NULL,            -- "light", "switch", "climate", etc.
+    friendly_name TEXT NOT NULL,     -- From HA: "Office Light"
+    area TEXT,                       -- HA area/room: "Office"
+    device_class TEXT,
+    aliases JSONB DEFAULT '[]',      -- ["office lights", "desk lamp"]
+    enabled BOOLEAN DEFAULT TRUE,    -- Can Skippy control this?
+    rules JSONB DEFAULT '{}',        -- {confirmation_required, never_auto_turn_off, allowed_hours, defaults, auto_off_minutes}
+    notes TEXT,
+    last_seen TIMESTAMPTZ DEFAULT NOW(),
+    user_id TEXT NOT NULL DEFAULT 'nolan',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ```
 
@@ -386,7 +411,11 @@ Conversation history is managed by LangGraph's built-in PostgreSQL checkpointer 
 - **Agent LLM**: OpenAI Chat Completions API — supports structured tool calls needed for LangGraph's agentic loop
 - **Memory System**: OpenAI Responses API — 40-80% better cache utilization for memory evaluation and embedding generation
 - **Model**: `gpt-4o-mini` (both APIs) — can be upgraded to GPT-5
-- **Home Assistant Integration**: Native REST API with fuzzy entity matching (type "office lights" instead of exact entity ID like `light.office_lights`)
+- **Home Assistant Integration**: Native REST API with persistent entity tracking and user-defined aliases
+  - 3-tier entity resolution: exact alias match (100%) → fuzzy alias match (85+) → fuzzy friendly_name
+  - Type "office lights" instead of exact entity ID like `light.office_lights`
+  - Automatic sync every 30 minutes + manual trigger
+  - Web dashboard for managing entities and aliases
 
 ### Memory System
 
