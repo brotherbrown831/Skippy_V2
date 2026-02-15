@@ -780,6 +780,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         .card.memories { --accent: #7eb8ff; }
         .card.people { --accent: #c792ea; }
         .card.entities { --accent: #89ddff; }
+        .card.pgadmin { --accent: #ffc857; }
 
         /* Modal */
         .modal {
@@ -1209,6 +1210,23 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                     </div>
                 </div>
                 <div class="card-button">View Entities →</div>
+            </a>
+
+            <a href="http://localhost:5050" target="_blank" class="card pgadmin">
+                <div class="card-icon">🗄️</div>
+                <h2>pgAdmin</h2>
+                <p>PostgreSQL database administration & query builder</p>
+                <div class="card-stats">
+                    <div class="stat">
+                        <span class="stat-label">Host</span>
+                        <span class="stat-value">localhost:5050</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">User</span>
+                        <span class="stat-value">admin@skippy.dev</span>
+                    </div>
+                </div>
+                <div class="card-button">Open pgAdmin →</div>
             </a>
         </div>
 
