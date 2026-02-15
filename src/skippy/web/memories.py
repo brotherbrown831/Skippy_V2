@@ -281,15 +281,16 @@ MEMORIES_PAGE_HTML = """\
   </div>
   <table>
     <thead>
-      <tr>
-        <th>Domain</th>
-        <th>Entity ID</th>
-        <th>Name</th>
-        <th>Area</th>
-        <th>Aliases</th>
-        <th class="hide-mobile">Status</th>
-        <th></th>
-      </tr>
+    <tr>
+      <th>Domain</th>
+      <th>Entity ID</th>
+      <th>Device</th>
+      <th>Name</th>
+      <th>Area</th>
+      <th>Aliases</th>
+      <th class="hide-mobile">Status</th>
+      <th></th>
+    </tr>
     </thead>
     <tbody id="ent-tbody"></tbody>
   </table>
@@ -426,6 +427,7 @@ function filterEntities() {
     <tr>
       <td><span class="badge" style="background: #1a1d27; color: #7eb8ff;">${entity.domain}</span></td>
       <td><code style="background: #0a0d17; padding: 2px 6px; border-radius: 3px;">${esc(entity.entity_id)}</code></td>
+      <td>${esc(entity.device_id) || emptyCell()}</td>
       <td>${esc(entity.friendly_name)}</td>
       <td>${esc(entity.area) || emptyCell()}</td>
       <td>${(entity.aliases || []).length > 0 ? entity.aliases.join(', ') : emptyCell()}</td>

@@ -45,7 +45,7 @@ async def get_ha_entities(
 
                 await cur.execute(
                     f"""
-                    SELECT entity_id, domain, friendly_name, area, device_class,
+                    SELECT entity_id, domain, friendly_name, area, device_class, device_id,
                            aliases, enabled, rules, notes, last_seen, created_at, updated_at
                     FROM ha_entities
                     WHERE {where_clause}

@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS ha_entities (
     friendly_name TEXT NOT NULL,
     area TEXT,
     device_class TEXT,
+    device_id TEXT,
     aliases JSONB DEFAULT '[]'::jsonb,
     enabled BOOLEAN DEFAULT TRUE,
     rules JSONB DEFAULT '{}'::jsonb,
@@ -67,6 +68,9 @@ CREATE INDEX IF NOT EXISTS idx_ha_entities_aliases ON ha_entities USING gin(alia
 
 COMMENT ON COLUMN ha_entities.aliases IS 'User-defined aliases for entity matching';
 COMMENT ON COLUMN ha_entities.rules IS 'JSON: {confirmation_required, never_auto_turn_off, allowed_hours: {start, end}, defaults: {brightness, temperature, hvac_mode}, auto_off_minutes}';
+
+ALTER TABLE ha_entities
+ADD COLUMN IF NOT EXISTS device_id TEXT;
 
 -- Scheduled tasks (chat-created and predefined)
 CREATE TABLE IF NOT EXISTS scheduled_tasks (

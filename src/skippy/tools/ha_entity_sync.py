@@ -59,13 +59,14 @@ async def sync_ha_entities_to_db(user_id: str = "nolan") -> dict:
                             """
                             INSERT INTO ha_entities
                                 (entity_id, domain, friendly_name, area, device_class,
-                                 last_seen, enabled, user_id)
-                            VALUES (%s, %s, %s, %s, %s, NOW(), TRUE, %s)
+                                 device_id, last_seen, enabled, user_id)
+                            VALUES (%s, %s, %s, %s, %s, %s, NOW(), TRUE, %s)
                             ON CONFLICT (entity_id) DO UPDATE SET
                                 domain = EXCLUDED.domain,
                                 friendly_name = EXCLUDED.friendly_name,
                                 area = EXCLUDED.area,
                                 device_class = EXCLUDED.device_class,
+                                device_id = EXCLUDED.device_id,
                                 last_seen = NOW(),
                                 enabled = TRUE,
                                 updated_at = NOW()
@@ -76,6 +77,7 @@ async def sync_ha_entities_to_db(user_id: str = "nolan") -> dict:
                                 entity.get("friendly_name"),
                                 entity.get("area"),
                                 entity.get("device_class"),
+                                entity.get("device_id"),
                                 user_id,
                             ),
                         )
@@ -170,7 +172,7 @@ async def search_ha_entities(
 
                 await cur.execute(
                     f"""
-                    SELECT entity_id, domain, friendly_name, area, device_class,
+                    SELECT entity_id, domain, friendly_name, area, device_class, device_id,
                            aliases, enabled, rules, notes, last_seen
                     FROM ha_entities
                     WHERE {where_clause}
