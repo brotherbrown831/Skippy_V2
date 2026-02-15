@@ -1,0 +1,14 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "Skippy PostgreSQL",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "skippy",
+      "Username": "skippy",
+      "SSLMode": "prefer",
+      "PassFile": "/pgpass"
+    }
+  }
+}
