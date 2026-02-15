@@ -14,6 +14,7 @@ from skippy.tools.gmail import get_tools as _gmail_tools
 from skippy.tools.google_contacts import get_tools as _contacts_tools
 from skippy.tools.contact_sync import get_tools as _contact_sync_tools
 from skippy.tools.telegram import get_tools as _telegram_tools
+from skippy.tools.testing import get_tools as _testing_tools
 
 logger = logging.getLogger("skippy")
 
@@ -29,6 +30,7 @@ def collect_tools() -> list:
         ("google_contacts", _contacts_tools),
         ("contact_sync", _contact_sync_tools),
         ("telegram", _telegram_tools),
+        ("testing", _testing_tools),
     ]
 
     all_tools = []

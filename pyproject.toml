@@ -18,7 +18,6 @@ dependencies = [
     "google-auth>=2.25",
     "google-auth-oauthlib>=1.2",
     "apscheduler>=3.10,<4",
-    "sqlalchemy>=2.0",
     "twilio>=9.0",
     "rapidfuzz>=3.0",
 ]
@@ -36,6 +35,11 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/skippy"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["src"]
 
 [tool.ruff]
 target-version = "py312"

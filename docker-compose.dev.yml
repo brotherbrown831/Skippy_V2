@@ -5,6 +5,8 @@ services:
     working_dir: /app/src
     volumes:
       - ./src:/app/src
+      - ./tests:/app/tests
+      - ./pyproject.toml:/app/pyproject.toml
     command: uvicorn skippy.main:app --reload --host 0.0.0.0 --port 8000 --app-dir /app/src
     environment:
       - LOG_LEVEL=debug

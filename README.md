@@ -66,7 +66,7 @@ An AI personal assistant with long-term semantic memory, built with LangGraph, F
 | Telegram | Telegram Bot API (long polling) |
 | Deployment | Docker Compose |
 
-## Tools (41 total)
+## Tools (42 total)
 
 | Module | Tools | Description |
 |--------|-------|-------------|
@@ -78,6 +78,7 @@ An AI personal assistant with long-term semantic memory, built with LangGraph, F
 | `people` | 5 | Structured people database CRUD |
 | `contact_sync` | 1 | Google Contacts → People table sync (on-demand + scheduled) |
 | `telegram` | 2 | Receive messages via polling, send notifications |
+| `testing` | 1 | Run pytest suite and email results |
 
 ## Project Structure
 
@@ -94,6 +95,15 @@ An AI personal assistant with long-term semantic memory, built with LangGraph, F
 │   └── google-token.json       # OAuth2 refresh token (Gmail/Contacts)
 ├── db/
 │   └── init.sql                # Schema: memories, people, scheduled_tasks
+├── tests/                      # Integration test suite (hits real services)
+│   ├── conftest.py             # Fixtures + skip markers
+│   ├── test_config.py
+│   ├── test_database.py
+│   ├── test_memory.py
+│   ├── test_agent.py
+│   ├── test_prompts.py
+│   ├── test_tools_*.py         # One file per tool module
+│   └── test_tools_init.py
 └── src/skippy/
     ├── main.py                 # FastAPI app + endpoints
     ├── config.py               # Settings from .env
@@ -115,7 +125,8 @@ An AI personal assistant with long-term semantic memory, built with LangGraph, F
     │   ├── gmail.py             # Gmail read/send/reply
     │   ├── google_contacts.py   # Google Contacts CRUD
     │   ├── scheduler.py         # Task & reminder tools
-    │   └── people.py            # Structured people database
+    │   ├── people.py            # Structured people database
+    │   └── testing.py           # Run test suite + email results
     └── web/
         ├── memories.py          # Memory Bank dashboard (tabbed)
         └── people.py            # People API endpoints
@@ -383,6 +394,28 @@ Conversation history is managed by LangGraph's built-in PostgreSQL checkpointer 
 - **Semantic deduplication** — if a new fact is >80% similar to an existing memory, the existing one is reinforced (confidence goes up) instead of creating a duplicate
 - **Categorized** — memories are tagged: `family`, `person`, `preference`, `project`, `technical`, `recurring_event`, `fact`
 - **Reinforcement** — frequently mentioned facts get higher confidence scores
+
+## Testing
+
+The project includes an integration test suite (86 tests) that hits real services — no mocking.
+
+**Run inside the dev container:**
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml exec skippy \
+  python -m pytest tests/ -v --tb=short
+```
+
+**Or via Skippy himself:**
+Ask Skippy to "run the test suite" — he'll execute pytest and email the results.
+
+**What's tested:**
+- Config loading and defaults
+- PostgreSQL connectivity, pgvector, all tables, memory roundtrip
+- Memory retrieval (real OpenAI embeddings + Postgres)
+- Agent graph compilation
+- Prompt templates
+- All tool modules: HA entity resolution, Google Calendar/Gmail/Contacts, people CRUD, scheduler, Telegram, contact sync
+- Tool auto-discovery (`collect_tools()`)
 
 ## Troubleshooting
 

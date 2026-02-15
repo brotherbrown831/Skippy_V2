@@ -24,7 +24,8 @@ What's already working:
 - APScheduler task engine (recurring tasks, one-time reminders, timers, direct-function routines)
 - Structured people database with auto-extraction + Google Contacts sync
 - Unified Memory Bank web dashboard (semantic memories + people)
-- **41 tools** across 9 modules
+- **42 tools** across 10 modules
+- **Integration test suite** — 86 tests hitting real services (pytest + pytest-asyncio)
 
 ---
 

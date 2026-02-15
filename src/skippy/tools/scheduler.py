@@ -46,8 +46,10 @@ async def create_scheduled_task(
     task_id = f"chat-{uuid.uuid4().hex[:8]}"
 
     if schedule_type == "cron":
-        if hour < 0:
-            return "Error: 'hour' is required for cron tasks (0-23)."
+        if hour < 0 or hour > 23:
+            return "Error: 'hour' must be between 0-23 for cron tasks."
+        if minute < 0 or minute > 59:
+            return "Error: 'minute' must be between 0-59 for cron tasks."
         schedule_config = {"hour": hour, "minute": minute}
     elif schedule_type == "interval":
         if interval_minutes <= 0:
