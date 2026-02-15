@@ -18,6 +18,7 @@ from skippy.config import settings
 from skippy.db_init import initialize_schema
 from skippy.scheduler import start_scheduler, stop_scheduler
 from skippy.telegram import start_telegram, stop_telegram
+from skippy.web.home import router as home_router
 from skippy.web.memories import router as memories_router
 from skippy.web.people import router as people_router
 from skippy.web.ha_entities import router as ha_entities_router
@@ -115,6 +116,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Skippy", version="2.0.0", lifespan=lifespan)
+app.include_router(home_router)
 app.include_router(memories_router)
 app.include_router(people_router)
 app.include_router(ha_entities_router)
