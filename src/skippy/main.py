@@ -15,6 +15,7 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 from skippy.agent.graph import build_graph
 from skippy.config import settings
+from skippy.db_init import initialize_schema
 from skippy.scheduler import start_scheduler, stop_scheduler
 from skippy.telegram import start_telegram, stop_telegram
 from skippy.web.memories import router as memories_router
@@ -96,6 +97,7 @@ async def lifespan(app: FastAPI):
         open=False,
     )
     await app.state.pool.open()
+    await initialize_schema()
     async with AsyncPostgresSaver.from_conn_string(settings.database_url) as checkpointer:
         await checkpointer.setup()
         app.state.graph = await build_graph(checkpointer)

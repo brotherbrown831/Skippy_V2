@@ -361,12 +361,12 @@ async function loadPeople() {
     pplTbody.innerHTML = data.map(p => `
       <tr>
         <td><strong>${esc(p.name)}</strong></td>
-        <td>${p.relationship ? `<span class="badge badge-rel">${esc(p.relationship)}</span>` : e()}</td>
-        <td>${esc(p.birthday) || e()}</td>
-        <td class="hide-mobile">${esc(p.address) || e()}</td>
-        <td class="hide-mobile">${esc(p.phone) || e()}</td>
-        <td class="hide-mobile">${esc(p.email) || e()}</td>
-        <td class="hide-mobile">${esc(p.notes) || e()}</td>
+        <td>${p.relationship ? `<span class="badge badge-rel">${esc(p.relationship)}</span>` : emptyCell()}</td>
+        <td>${esc(p.birthday) || emptyCell()}</td>
+        <td class="hide-mobile">${esc(p.address) || emptyCell()}</td>
+        <td class="hide-mobile">${esc(p.phone) || emptyCell()}</td>
+        <td class="hide-mobile">${esc(p.email) || emptyCell()}</td>
+        <td class="hide-mobile">${esc(p.notes) || emptyCell()}</td>
         <td><button class="btn-del" onclick="delPerson(${p.person_id})">Delete</button></td>
       </tr>
     `).join('');
@@ -387,7 +387,7 @@ function esc(s) {
   d.textContent = s ?? '';
   return d.innerHTML;
 }
-function e() { return '<span class="empty">\\u2014</span>'; }
+function emptyCell() { return '<span class="empty">\\u2014</span>'; }
 function fmtDate(iso) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -422,15 +422,15 @@ function filterEntities() {
   });
 
   entCount.textContent = filtered.length + ' entit' + (filtered.length === 1 ? 'y' : 'ies');
-  entTbody.innerHTML = filtered.map(e => `
+  entTbody.innerHTML = filtered.map(entity => `
     <tr>
-      <td><span class="badge" style="background: #1a1d27; color: #7eb8ff;">${e.domain}</span></td>
-      <td><code style="background: #0a0d17; padding: 2px 6px; border-radius: 3px;">${esc(e.entity_id)}</code></td>
-      <td>${esc(e.friendly_name)}</td>
-      <td>${esc(e.area) || e()}</td>
-      <td>${(e.aliases || []).length > 0 ? e.aliases.join(', ') : e()}</td>
-      <td class="hide-mobile" style="color: ${e.enabled ? '#48bb78' : '#888'};">${e.enabled ? '✓ Enabled' : '✗ Disabled'}</td>
-      <td><button class="btn-del" onclick="deleteEntity('${e.entity_id}')">Delete</button></td>
+      <td><span class="badge" style="background: #1a1d27; color: #7eb8ff;">${entity.domain}</span></td>
+      <td><code style="background: #0a0d17; padding: 2px 6px; border-radius: 3px;">${esc(entity.entity_id)}</code></td>
+      <td>${esc(entity.friendly_name)}</td>
+      <td>${esc(entity.area) || emptyCell()}</td>
+      <td>${(entity.aliases || []).length > 0 ? entity.aliases.join(', ') : emptyCell()}</td>
+      <td class="hide-mobile" style="color: ${entity.enabled ? '#48bb78' : '#888'};">${entity.enabled ? '✓ Enabled' : '✗ Disabled'}</td>
+      <td><button class="btn-del" onclick="deleteEntity('${entity.entity_id}')">Delete</button></td>
     </tr>
   `).join('');
 }
