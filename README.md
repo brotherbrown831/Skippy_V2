@@ -81,6 +81,21 @@ An AI personal assistant with long-term semantic memory, built with LangGraph, F
 | `telegram` | 2 | Receive messages via polling, send notifications |
 | `testing` | 1 | Run pytest suite and email results |
 
+## Dashboard Features (Phase 2)
+
+Interactive web dashboard with 6 advanced features:
+
+| Feature | Description |
+|---------|-------------|
+| **Recent Activity Timeline** | Unified event log showing last 10 actions across Memories, People, and HA Entities with emoji icons and relative timestamps |
+| **Quick Actions** | Modal forms to create memories (with OpenAI embedding generation) and add people with canonical naming |
+| **System Health Indicators** | Fixed badge (top-right) showing database health (🟢 healthy, 🟡 warning, 🔴 error) with detailed metrics modal |
+| **Global Search** | Full-width search bar with autocomplete—multi-table fuzzy matching across memories, people, and HA entities |
+| **User Preferences** | Settings modal with theme toggle (dark/light CSS), default page selection, and configurable auto-refresh interval (10-300 seconds) |
+| **Statistics Charts** | Professional data visualization with Chart.js: memory growth (30-day line), people importance distribution (5-bucket bar), entity status (pie chart) |
+
+**Data backing:** `activity_log` table (unified event tracking) + `user_preferences` table (settings persistence)
+
 ## Project Structure
 
 ```

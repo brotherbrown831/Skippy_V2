@@ -26,7 +26,14 @@ What's already working:
 - SMS notifications via Twilio
 - APScheduler task engine (recurring tasks, one-time reminders, timers, direct-function routines)
 - Structured people database with auto-extraction + Google Contacts sync
-- Unified web dashboard (semantic memories + people + HA entities tabs)
+- **Dashboard Phase 2 enhancements** (6 features):
+  - Recent Activity Timeline (unified event log across all subsystems)
+  - Quick Actions (add memory/person with modal forms)
+  - System Health Indicators (database metrics, status badge)
+  - Global Search (multi-table fuzzy search across memories/people/entities)
+  - User Preferences (theme, default page, auto-refresh interval)
+  - Statistics Charts (memory growth, people importance, entity status)
+- Unified web dashboard (semantic memories + people + HA entities tabs + Phase 2 features)
 - **45 tools** across 11 modules
 - **Integration test suite** — 86 tests hitting real services (pytest + pytest-asyncio)
 
@@ -92,7 +99,32 @@ What's already working:
 
 ---
 
-## Phase 2 — Awareness & Monitoring
+## Phase 2 — Dashboard & User Experience ✅
+
+### Dashboard Enhancements
+
+**Completed:**
+- **Recent Activity Timeline**: Unified event log showing last 10 activities across Memories, People, HA Entities with emoji icons + timestamps
+- **Quick Actions**: Modal forms to create memories (with OpenAI embedding) and people (with canonical naming)
+- **System Health Indicators**: Fixed badge (top-right) showing 🟢/🟡/🔴 status with detailed metrics modal (DB size, last sync, confidence/importance averages)
+- **Global Search**: Full-width search bar with autocomplete, multi-table fuzzy matching across all 3 systems
+- **User Preferences**: Settings modal with theme toggle (dark/light), default page selection, and auto-refresh interval control (10-300 seconds)
+- **Statistics Charts**: Professional data visualization (Chart.js v4):
+  - Memory Growth: 30-day line chart
+  - People Importance: 5-bucket distribution bar chart
+  - Entity Status: Enabled/Disabled pie chart
+- Activity logging infrastructure: `activity_log` table with automatic logging on memory/person creation and HA sync
+- User preferences persistence: `user_preferences` table with CSS dark/light theme support + responsive design
+
+**Technical:**
+- 8 new API endpoints (POST memory/people, GET activity/health/preferences/charts, POST search)
+- 1703-line home.py with integrated HTML/CSS/JavaScript
+- Activity logger utility for unified event tracking
+- All endpoints tested and operational
+
+---
+
+## Phase 3 — Awareness & Monitoring
 
 ### 4. Event Ingestion Framework
 
@@ -149,7 +181,7 @@ Add context weighting so the same event can mean different things depending on c
 
 ---
 
-## Phase 3 — Intelligence Upgrade
+## Phase 4 — Intelligence Upgrade
 
 ### 7. Memory Intelligence 2.0
 
@@ -191,7 +223,7 @@ Periodic self-analysis to increase long-term usefulness.
 
 ---
 
-## Phase 4 — Expansion
+## Phase 5 — Expansion
 
 ### 10. Calendar Deep Integration (partially done)
 
@@ -235,17 +267,19 @@ Phase 1.2 Task/Reminder Engine                    |
     |                                             |
 Phase 1.3 Notification/Escalation                 |
     |                                             |
-Phase 2.4 Event Ingestion ───┐                    |
-    |                        |                    |
-Phase 2.5 Priority Scoring ──┤                    |
-    |                        |                    |
-Phase 2.6 Context Awareness ─┘                    |
-                                                  |
-Phase 3.7 Memory 2.0                              |
+Phase 2: Dashboard ✅                             |
     |                                             |
-Phase 3.8 Relationship Tracking ──────────────────┘
+Phase 3.4 Event Ingestion ───┐                    |
+    |                        |                    |
+Phase 3.5 Priority Scoring ──┤                    |
+    |                        |                    |
+Phase 3.6 Context Awareness ─┘                    |
+                                                  |
+Phase 4.7 Memory 2.0                              |
+    |                                             |
+Phase 4.8 Relationship Tracking ──────────────────┘
     |
-Phase 3.9 Reflection Engine
+Phase 4.9 Reflection Engine
     |
-Phase 4.10-12 Calendar, Tool Registry, Dashboard
+Phase 5.10-12 Calendar, Tool Registry, Dashboard
 ```

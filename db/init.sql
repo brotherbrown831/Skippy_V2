@@ -112,3 +112,33 @@ CREATE TABLE IF NOT EXISTS reminder_acknowledgments (
 );
 CREATE INDEX IF NOT EXISTS idx_reminders_user_event ON reminder_acknowledgments (user_id, event_id, event_start);
 CREATE INDEX IF NOT EXISTS idx_reminders_status ON reminder_acknowledgments (user_id, status);
+
+-- Activity log for unified event tracking (Phase 2)
+CREATE TABLE IF NOT EXISTS activity_log (
+    activity_id SERIAL PRIMARY KEY,
+    user_id TEXT NOT NULL DEFAULT 'nolan',
+    activity_type TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT,
+    description TEXT NOT NULL,
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_user_time ON activity_log (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_activity_type ON activity_log (user_id, activity_type);
+
+-- User preferences for settings (Phase 2)
+CREATE TABLE IF NOT EXISTS user_preferences (
+    user_id TEXT PRIMARY KEY DEFAULT 'nolan',
+    theme TEXT DEFAULT 'dark',
+    default_page TEXT DEFAULT '/',
+    auto_refresh_interval INT DEFAULT 30,
+    preferences JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Insert default preferences for nolan
+INSERT INTO user_preferences (user_id) VALUES ('nolan')
+ON CONFLICT (user_id) DO NOTHING;
