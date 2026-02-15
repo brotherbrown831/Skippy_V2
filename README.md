@@ -53,7 +53,8 @@ An AI personal assistant with long-term semantic memory, built with LangGraph, F
 | Component | Technology |
 |-----------|-----------|
 | Agent framework | LangGraph (ReAct pattern) |
-| LLM | OpenAI gpt-4o-mini (Responses API) |
+| Agent LLM | OpenAI gpt-4o-mini (Chat Completions for tool execution) |
+| Memory LLM | OpenAI (Responses API for caching efficiency) |
 | Embeddings | OpenAI text-embedding-3-small |
 | HTTP server | FastAPI + Uvicorn |
 | Database | PostgreSQL 17 + pgvector |
@@ -361,17 +362,19 @@ Conversation history is managed by LangGraph's built-in PostgreSQL checkpointer 
 
 1. **User speaks** into a Wyoming satellite (or types in OpenWebUI/Telegram)
 2. Input converts to text and POSTs to `/webhook/skippy` (HA), `/webhook/v1/chat/completions` (OpenWebUI), or Telegram
-3. **Retrieve memories** — embed the query, cosine similarity search against pgvector
-4. **Agent reasons** — LLM (Responses API) gets Skippy's personality prompt + relevant memories + conversation history
+3. **Retrieve memories** — embed the query (Responses API), cosine similarity search against pgvector
+4. **Agent reasons** — LLM (Chat Completions) gets Skippy's personality prompt + relevant memories + conversation history
 5. **Tool use** — if the agent decides to use a tool (calendar, email, contacts, HA device control, etc.), it executes and loops back
 6. **Respond** — text sent back to requestor (HA voice TTS, OpenWebUI chat, Telegram message)
-7. **Evaluate memory** — background task asks LLM if the exchange contains facts worth remembering
+7. **Evaluate memory** — background task asks LLM (Responses API) if the exchange contains facts worth remembering
 8. **Store/reinforce** — new facts get embedded and stored; duplicates get reinforced
 
 ### API & LLM Details
 
-- **LLM API**: OpenAI Responses API (`/v1/responses`) — 40-80% better cache utilization than Chat Completions
-- **Model**: `gpt-4o-mini` (can be upgraded to GPT-5)
+**Hybrid Approach for Optimal Performance:**
+- **Agent LLM**: OpenAI Chat Completions API — supports structured tool calls needed for LangGraph's agentic loop
+- **Memory System**: OpenAI Responses API — 40-80% better cache utilization for memory evaluation and embedding generation
+- **Model**: `gpt-4o-mini` (both APIs) — can be upgraded to GPT-5
 - **Home Assistant Integration**: Native REST API with fuzzy entity matching (type "office lights" instead of exact entity ID like `light.office_lights`)
 
 ### Memory System

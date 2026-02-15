@@ -7,7 +7,7 @@
 
 What's already working:
 
-- **LangGraph agent** with ReAct pattern (gpt-4o-mini via OpenAI Responses API — 40-80% better cache utilization)
+- **LangGraph agent** with ReAct pattern (gpt-4o-mini via Chat Completions for tool execution, Responses API for memory caching)
 - FastAPI backend with voice webhook + OpenAI-compatible chat endpoint
 - PostgreSQL 17 + pgvector semantic memory (store, retrieve, dedup)
 - langgraph-checkpoint-postgres for conversation persistence
