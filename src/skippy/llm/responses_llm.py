@@ -90,9 +90,13 @@ class ResponsesAPILLM(BaseChatModel):
             "max_output_tokens": self.max_output_tokens,
         }
 
-        # Note: Tools are not passed to Responses API in this implementation
-        # Tool handling is managed by LangGraph's tool execution layer
-        # (similar to how ChatOpenAI works with bind_tools)
+        # Add tools if bound (Responses API supports tools)
+        if self.tools:
+            # Convert LangChain tools to OpenAI format
+            # The Responses API accepts the full tool definitions
+            api_kwargs["tools"] = [
+                convert_to_openai_tool(tool) for tool in self.tools
+            ]
 
         # Merge any additional kwargs
         api_kwargs.update(kwargs)
