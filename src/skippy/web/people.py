@@ -289,8 +289,10 @@ PEOPLE_PAGE_HTML = """<!DOCTYPE html>
                 }
 
                 // Separate important and all people
-                const important = people.filter(p => p.importance_score >= 50 ||
-                    (p.last_mentioned && new Date(p.last_mentioned) > new Date(Date.now() - 7*24*60*60*1000)));
+                const important = people.filter(p =>
+                    (p.canonical_name && p.canonical_name.trim() !== '') &&
+                    (p.importance_score >= 50 ||
+                    (p.last_mentioned && new Date(p.last_mentioned) > new Date(Date.now() - 7*24*60*60*1000))));
 
                 // Render important people
                 if (important.length > 0) {

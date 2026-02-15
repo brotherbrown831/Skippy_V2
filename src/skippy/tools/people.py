@@ -173,8 +173,8 @@ async def _resolve_person_identity(
     best_field = None
 
     for person_id, canonical_name, aliases in all_people:
-        # Check canonical_name
-        score = fuzz.ratio(query_lower, canonical_name.lower())
+        # Check canonical_name (use token_set_ratio for better name matching)
+        score = fuzz.token_set_ratio(query_lower, canonical_name.lower())
         if score > best_score:
             best_score = score
             best_match = (person_id, canonical_name)
@@ -183,7 +183,7 @@ async def _resolve_person_identity(
         # Check aliases
         if aliases:
             for alias in aliases:
-                score = fuzz.ratio(query_lower, alias.lower())
+                score = fuzz.token_set_ratio(query_lower, alias.lower())
                 if score > best_score:
                     best_score = score
                     best_match = (person_id, canonical_name)
@@ -994,12 +994,12 @@ async def find_duplicate_people(threshold: int = 70) -> str:
                                 processed.add(other_id)
                                 break
 
-            # Fuzzy match on names
+            # Fuzzy match on names (use token_set_ratio for better name matching)
             for other_id in people_data:
                 if other_id <= person_id or other_id in processed:
                     continue
 
-                score = fuzz.ratio(
+                score = fuzz.token_set_ratio(
                     people_data[person_id]["name"].lower(),
                     people_data[other_id]["name"].lower()
                 )
