@@ -26,6 +26,7 @@ class Settings(BaseSettings):
 
     # Scheduler
     scheduler_enabled: bool = True
+    calendar_check_interval_minutes: int = 360  # 6 hours
 
     # Telegram
     telegram_bot_token: str = ""

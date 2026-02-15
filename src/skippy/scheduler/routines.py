@@ -117,7 +117,7 @@ PREDEFINED_ROUTINES = [
             "event_summary, and event_start so a reminder record can be created. "
             "If there are no events needing reminders, do NOT send a message — just respond with 'No upcoming events.'"
         ),
-        "trigger": IntervalTrigger(minutes=30),
+        "trigger": IntervalTrigger(minutes=settings.calendar_check_interval_minutes),
     },
 ]
 
