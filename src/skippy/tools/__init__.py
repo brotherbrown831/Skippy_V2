@@ -16,6 +16,7 @@ from skippy.tools.contact_sync import get_tools as _contact_sync_tools
 from skippy.tools.telegram import get_tools as _telegram_tools
 from skippy.tools.testing import get_tools as _testing_tools
 from skippy.tools.tasks import get_tools as _task_tools
+from skippy.tools.tavily import get_tools as _tavily_tools
 
 logger = logging.getLogger("skippy")
 
@@ -33,6 +34,7 @@ def collect_tools() -> list:
         ("telegram", _telegram_tools),
         ("testing", _testing_tools),
         ("tasks", _task_tools),
+        ("tavily", _tavily_tools),
     ]
 
     all_tools = []

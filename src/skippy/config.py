@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     telegram_long_poll_timeout: int = 20
     telegram_api_base: str = "https://api.telegram.org"
 
+    # Tavily Web Search
+    tavily_api_key: str = ""
+    tavily_api_base: str = "https://api.tavily.com"
+
     # Google Calendar
     google_calendar_id: str = ""
     google_service_account_json: str = ""
