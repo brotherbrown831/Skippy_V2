@@ -1,3 +1,5 @@
+import re
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -27,6 +29,10 @@ class Settings(BaseSettings):
     # Scheduler
     scheduler_enabled: bool = True
     calendar_check_interval_minutes: int = 360  # 6 hours
+    morning_briefing_time: str = "07:00"
+    evening_summary_time: str = "22:00"
+    google_contacts_sync_time: str = "02:00"
+    people_importance_recalc_time: str = "03:00"
 
     # Telegram
     telegram_bot_token: str = ""
@@ -57,6 +63,40 @@ class Settings(BaseSettings):
     memory_retrieval_limit: int = 5
     memory_dedup_threshold: float = 0.8
     memory_context_window: int = 6
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_schedule_times(cls, values):
+        """Validate schedule time format: HH:MM or 'disabled'."""
+        time_fields = [
+            "morning_briefing_time",
+            "evening_summary_time",
+            "google_contacts_sync_time",
+            "people_importance_recalc_time",
+        ]
+
+        time_pattern = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
+
+        for field in time_fields:
+            value = values.get(field, "")
+
+            if not value:  # Use default
+                continue
+
+            if isinstance(value, str) and value.lower() == "disabled":
+                values[field] = "disabled"
+                continue
+
+            # Validate HH:MM format
+            if isinstance(value, str):
+                match = time_pattern.match(value)
+                if not match:
+                    raise ValueError(
+                        f"{field}: must be 'HH:MM' (24-hour), 'disabled', "
+                        f"or empty. Got: '{value}'"
+                    )
+
+        return values
 
     model_config = {"env_file": ".env"}
 

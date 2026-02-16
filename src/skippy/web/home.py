@@ -239,38 +239,24 @@ async def get_system_health():
                 status = "healthy"
                 if db_size_mb > 1000:
                     status = "warning"
-                if last_sync_time:
-                    try:
-                        last_sync_dt = datetime.fromisoformat(last_sync_time.replace('Z', '+00:00'))
-                        hours_since_sync = (datetime.now(timezone.utc) - last_sync_dt).total_seconds() / 3600
-                        if hours_since_sync > 2:
-                            status = "warning"
-                    except Exception:
-                        pass
 
                 return {
                     "status": status,
                     "database_size_mb": db_size_mb,
-                    "last_sync": last_sync_time,
                     "memory_count": memory_count,
                     "avg_confidence": avg_confidence,
                     "people_count": people_count,
                     "avg_importance": avg_importance,
-                    "total_entities": total_entities,
-                    "enabled_entities": enabled_entities,
                 }
     except Exception:
         logger.exception("Failed to fetch system health")
         return {
             "status": "error",
             "database_size_mb": 0,
-            "last_sync": None,
             "memory_count": 0,
             "avg_confidence": 0,
             "people_count": 0,
             "avg_importance": 0,
-            "total_entities": 0,
-            "enabled_entities": 0,
         }
 
 

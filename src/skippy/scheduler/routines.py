@@ -79,66 +79,126 @@ async def recalculate_people_importance() -> None:
         logger.error("Failed to recalculate people importance: %s", e)
 
 
-PREDEFINED_ROUTINES = [
-    {
-        "task_id": "morning-briefing",
-        "name": "Morning Briefing",
-        "prompt": (
-            "Check today's calendar events and tasks, then send a Telegram message to Nolan "
-            "with a brief summary. Include: "
-            "1. Calendar events for today (times and titles). "
-            "2. Top 3 priority tasks for today (from tasks with high urgency_score or due today). "
-            "3. Number of overdue tasks (if any - nag about them). "
-            "4. One backlog item worth considering (highest backlog_rank if available). "
-            "If there are no events or tasks, still send a message saying the day is clear. "
-            "Be your usual snarky self. Use the send_telegram_message tool."
-        ),
-        "trigger": CronTrigger(hour=7, minute=0, timezone=settings.timezone),
-    },
-    {
-        "task_id": "evening-summary",
-        "name": "Evening Summary",
-        "prompt": (
-            "Check tomorrow's calendar and tasks, then send a Telegram message to Nolan "
-            "with a brief preview. Include: "
-            "1. Tomorrow's calendar events. "
-            "2. Tasks due tomorrow or marked as 'next_up' for tomorrow. "
-            "3. Completed tasks today (count and celebrate if any). "
-            "Keep it short and snarky. Use the send_telegram_message tool."
-        ),
-        "trigger": CronTrigger(hour=22, minute=0, timezone=settings.timezone),
-    },
-    {
-        "task_id": "upcoming-event-check",
-        "name": "Upcoming Event Reminder",
-        "prompt": (
-            "Check if there are any calendar events starting in the next 30 minutes. "
-            "For each upcoming event, check the reminder_acknowledgments table to see if "
-            "a reminder has already been sent and acknowledged. Only send reminders for events that: "
-            "1) Have never been reminded about (no row in reminder_acknowledgments), OR "
-            "2) Were snoozed and the snooze time has passed (status='snoozed' AND snoozed_until < NOW()), OR "
-            "3) Are pending but never acknowledged after 30 minutes (status='pending' AND reminded_at < NOW() - INTERVAL '30 minutes'). "
-            "When sending a reminder, use send_telegram_message_with_reminder_buttons and pass the event_id, "
-            "event_summary, and event_start so a reminder record can be created. "
-            "If there are no events needing reminders, do NOT send a message — just respond with 'No upcoming events.'"
-        ),
-        "trigger": IntervalTrigger(minutes=settings.calendar_check_interval_minutes),
-    },
-]
+def _create_cron_trigger_from_time(time_str: str) -> CronTrigger | None:
+    """Create CronTrigger from time string, or None if disabled.
+
+    Args:
+        time_str: "HH:MM" format or "disabled"
+
+    Returns:
+        CronTrigger if enabled, None if disabled
+    """
+    if time_str.lower() == "disabled":
+        logger.info("Schedule disabled: %s", time_str)
+        return None
+
+    hour, minute = time_str.split(":")
+    return CronTrigger(hour=int(hour), minute=int(minute), timezone=settings.timezone)
+
+
+def _build_predefined_routines() -> list:
+    """Build PREDEFINED_ROUTINES list based on config settings."""
+    routines = []
+
+    # Morning briefing
+    morning_trigger = _create_cron_trigger_from_time(settings.morning_briefing_time)
+    if morning_trigger:
+        routines.append(
+            {
+                "task_id": "morning-briefing",
+                "name": "Morning Briefing",
+                "prompt": (
+                    "Check today's calendar events and tasks, then send a Telegram message to Nolan "
+                    "with a brief summary. Include: "
+                    "1. Calendar events for today (times and titles). "
+                    "2. Top 3 priority tasks for today (from tasks with high urgency_score or due today). "
+                    "3. Number of overdue tasks (if any - nag about them). "
+                    "4. One backlog item worth considering (highest backlog_rank if available). "
+                    "If there are no events or tasks, still send a message saying the day is clear. "
+                    "Be your usual snarky self. Use the send_telegram_message tool."
+                ),
+                "trigger": morning_trigger,
+            }
+        )
+
+    # Evening summary
+    evening_trigger = _create_cron_trigger_from_time(settings.evening_summary_time)
+    if evening_trigger:
+        routines.append(
+            {
+                "task_id": "evening-summary",
+                "name": "Evening Summary",
+                "prompt": (
+                    "Check tomorrow's calendar and tasks, then send a Telegram message to Nolan "
+                    "with a brief preview. Include: "
+                    "1. Tomorrow's calendar events. "
+                    "2. Tasks due tomorrow or marked as 'next_up' for tomorrow. "
+                    "3. Completed tasks today (count and celebrate if any). "
+                    "Keep it short and snarky. Use the send_telegram_message tool."
+                ),
+                "trigger": evening_trigger,
+            }
+        )
+
+    # Upcoming event check (always enabled, uses interval from config)
+    routines.append(
+        {
+            "task_id": "upcoming-event-check",
+            "name": "Upcoming Event Reminder",
+            "prompt": (
+                "Check if there are any calendar events starting in the next 30 minutes. "
+                "For each upcoming event, check the reminder_acknowledgments table to see if "
+                "a reminder has already been sent and acknowledged. Only send reminders for events that: "
+                "1) Have never been reminded about (no row in reminder_acknowledgments), OR "
+                "2) Were snoozed and the snooze time has passed (status='snoozed' AND snoozed_until < NOW()), OR "
+                "3) Are pending but never acknowledged after 30 minutes (status='pending' AND reminded_at < NOW() - INTERVAL '30 minutes'). "
+                "When sending a reminder, use send_telegram_message_with_reminder_buttons and pass the event_id, "
+                "event_summary, and event_start so a reminder record can be created. "
+                "If there are no events needing reminders, do NOT send a message — just respond with 'No upcoming events.'"
+            ),
+            "trigger": IntervalTrigger(minutes=settings.calendar_check_interval_minutes),
+        }
+    )
+
+    return routines
+
+
+PREDEFINED_ROUTINES = _build_predefined_routines()
+
+
+def _build_direct_routines() -> list:
+    """Build DIRECT_ROUTINES list based on config settings."""
+    routines = []
+
+    # Google Contacts sync
+    sync_trigger = _create_cron_trigger_from_time(settings.google_contacts_sync_time)
+    if sync_trigger:
+        routines.append(
+            {
+                "task_id": "google-contacts-sync",
+                "name": "Google Contacts Sync",
+                "func": "skippy.tools.contact_sync:sync_google_contacts_to_people",
+                "trigger": sync_trigger,
+            }
+        )
+
+    # People importance recalculation
+    recalc_trigger = _create_cron_trigger_from_time(
+        settings.people_importance_recalc_time
+    )
+    if recalc_trigger:
+        routines.append(
+            {
+                "task_id": "recalc-people-importance",
+                "name": "Recalculate People Importance",
+                "func": "skippy.scheduler.routines:recalculate_people_importance",
+                "trigger": recalc_trigger,
+            }
+        )
+
+    return routines
+
 
 # Direct-function routines — these call a function directly instead of
 # going through the agent graph (no LLM call needed for data sync jobs).
-DIRECT_ROUTINES = [
-    {
-        "task_id": "google-contacts-sync",
-        "name": "Google Contacts Sync",
-        "func": "skippy.tools.contact_sync:sync_google_contacts_to_people",
-        "trigger": CronTrigger(hour=2, minute=0, timezone=settings.timezone),
-    },
-    {
-        "task_id": "recalc-people-importance",
-        "name": "Recalculate People Importance",
-        "func": "skippy.scheduler.routines:recalculate_people_importance",
-        "trigger": CronTrigger(hour=3, minute=0, timezone=settings.timezone),
-    },
-]
+DIRECT_ROUTINES = _build_direct_routines()
