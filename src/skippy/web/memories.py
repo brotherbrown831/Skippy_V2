@@ -195,11 +195,7 @@ MEMORIES_PAGE_HTML = """\
 <h1>Skippy's Memory Search</h1>
 <p class="subtitle">All the things this magnificent AI remembers about you monkeys.</p>
 
-<div class="tabs">
-  <div class="tab active" data-tab="memories">Semantic Memories</div>
-  <div class="tab" data-tab="people">People</div>
-  <div class="tab" data-tab="entities">HA Entities</div>
-</div>
+<h2 style="margin-top: 2rem; margin-bottom: 1.5rem; font-size: 1.5rem;">Semantic Memories</h2>
 
 <!-- Memories Tab -->
 <div id="tab-memories" class="tab-panel active">
@@ -239,76 +235,8 @@ MEMORIES_PAGE_HTML = """\
   </table>
 </div>
 
-<!-- People Tab -->
-<div id="tab-people" class="tab-panel">
-  <p class="count" id="ppl-count" style="margin-bottom:16px"></p>
-  <table>
-    <thead>
-      <tr>
-        <th>Name</th>
-        <th>Relationship</th>
-        <th>Birthday</th>
-        <th class="hide-mobile">Address</th>
-        <th class="hide-mobile">Phone</th>
-        <th class="hide-mobile">Email</th>
-        <th class="hide-mobile">Notes</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody id="ppl-tbody"></tbody>
-  </table>
-</div>
-
-<!-- HA Entities Tab -->
-<div id="tab-entities" class="tab-panel">
-  <div class="controls">
-    <select id="entity-domain">
-      <option value="">All Domains</option>
-      <option value="light">Lights</option>
-      <option value="switch">Switches</option>
-      <option value="climate">Climate</option>
-      <option value="sensor">Sensors</option>
-      <option value="lock">Locks</option>
-      <option value="cover">Covers</option>
-    </select>
-    <select id="entity-status">
-      <option value="">All Status</option>
-      <option value="true">Enabled</option>
-      <option value="false">Disabled</option>
-    </select>
-    <button onclick="syncEntities()" style="background: #1a1d27; border: 1px solid #333; color: #7eb8ff; padding: 6px 12px; border-radius: 4px; cursor: pointer;">🔄 Sync Now</button>
-    <span class="count" id="ent-count"></span>
-  </div>
-  <table>
-    <thead>
-    <tr>
-      <th>Domain</th>
-      <th>Entity ID</th>
-      <th>Device</th>
-      <th>Name</th>
-      <th>Area</th>
-      <th>Aliases</th>
-      <th class="hide-mobile">Status</th>
-      <th></th>
-    </tr>
-    </thead>
-    <tbody id="ent-tbody"></tbody>
-  </table>
-</div>
-
 <script>
 /* --- Tab switching --- */
-document.querySelectorAll('.tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-    tab.classList.add('active');
-    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
-    if (tab.dataset.tab === 'people') loadPeople();
-    if (tab.dataset.tab === 'entities') loadEntities();
-  });
-});
-
 /* --- Memories --- */
 const categoryEl = document.getElementById('category');
 const sortEl = document.getElementById('sort');
@@ -350,38 +278,6 @@ async function delMem(id) {
 categoryEl.addEventListener('change', loadMemories);
 sortEl.addEventListener('change', loadMemories);
 
-/* --- People --- */
-const pplTbody = document.getElementById('ppl-tbody');
-const pplCount = document.getElementById('ppl-count');
-
-async function loadPeople() {
-  try {
-    const res = await fetch('/api/people');
-    const data = await res.json();
-    pplCount.textContent = data.length + ' ' + (data.length === 1 ? 'person' : 'people');
-    pplTbody.innerHTML = data.map(p => `
-      <tr>
-        <td><strong>${esc(p.name)}</strong></td>
-        <td>${p.relationship ? `<span class="badge badge-rel">${esc(p.relationship)}</span>` : emptyCell()}</td>
-        <td>${esc(p.birthday) || emptyCell()}</td>
-        <td class="hide-mobile">${esc(p.address) || emptyCell()}</td>
-        <td class="hide-mobile">${esc(p.phone) || emptyCell()}</td>
-        <td class="hide-mobile">${esc(p.email) || emptyCell()}</td>
-        <td class="hide-mobile">${esc(p.notes) || emptyCell()}</td>
-        <td><button class="btn-del" onclick="delPerson(${p.person_id})">Delete</button></td>
-      </tr>
-    `).join('');
-  } catch (err) {
-    pplTbody.innerHTML = '<tr><td colspan="8">Failed to load people.</td></tr>';
-  }
-}
-
-async function delPerson(id) {
-  if (!confirm('Delete this person?')) return;
-  await fetch('/api/people/' + id, { method: 'DELETE' });
-  loadPeople();
-}
-
 /* --- Helpers --- */
 function esc(s) {
   const d = document.createElement('div');
@@ -394,69 +290,6 @@ function fmtDate(iso) {
   const d = new Date(iso);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
-
-/* --- HA Entities --- */
-const entDomain = document.getElementById('entity-domain');
-const entStatus = document.getElementById('entity-status');
-const entTbody = document.getElementById('ent-tbody');
-const entCount = document.getElementById('ent-count');
-let allEntities = [];
-
-async function loadEntities() {
-  try {
-    const res = await fetch('/api/ha_entities');
-    allEntities = await res.json();
-    filterEntities();
-  } catch (err) {
-    entTbody.innerHTML = '<tr><td colspan="7">Failed to load entities.</td></tr>';
-  }
-}
-
-function filterEntities() {
-  const domain = entDomain.value;
-  const status = entStatus.value;
-
-  const filtered = allEntities.filter(e => {
-    if (domain && e.domain !== domain) return false;
-    if (status !== '' && (e.enabled ? 'true' : 'false') !== status) return false;
-    return true;
-  });
-
-  entCount.textContent = filtered.length + ' entit' + (filtered.length === 1 ? 'y' : 'ies');
-  entTbody.innerHTML = filtered.map(entity => `
-    <tr>
-      <td><span class="badge" style="background: #1a1d27; color: #7eb8ff;">${entity.domain}</span></td>
-      <td><code style="background: #0a0d17; padding: 2px 6px; border-radius: 3px;">${esc(entity.entity_id)}</code></td>
-      <td>${esc(entity.device_id) || emptyCell()}</td>
-      <td>${esc(entity.friendly_name)}</td>
-      <td>${esc(entity.area) || emptyCell()}</td>
-      <td>${(entity.aliases || []).length > 0 ? entity.aliases.join(', ') : emptyCell()}</td>
-      <td class="hide-mobile" style="color: ${entity.enabled ? '#48bb78' : '#888'};">${entity.enabled ? '✓ Enabled' : '✗ Disabled'}</td>
-      <td><button class="btn-del" onclick="deleteEntity('${entity.entity_id}')">Delete</button></td>
-    </tr>
-  `).join('');
-}
-
-async function syncEntities() {
-  if (!confirm('Sync all entities from Home Assistant?')) return;
-  try {
-    const res = await fetch('/api/ha_entities/sync', { method: 'POST' });
-    const result = await res.json();
-    alert(`Synced ${result.synced} entities, disabled ${result.disabled}`);
-    loadEntities();
-  } catch (err) {
-    alert('Sync failed: ' + err.message);
-  }
-}
-
-async function deleteEntity(entityId) {
-  if (!confirm('Disable this entity?')) return;
-  await fetch('/api/ha_entities/' + encodeURIComponent(entityId), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: false }) });
-  loadEntities();
-}
-
-entDomain.addEventListener('change', filterEntities);
-entStatus.addEventListener('change', filterEntities);
 
 /* --- Init --- */
 loadMemories();

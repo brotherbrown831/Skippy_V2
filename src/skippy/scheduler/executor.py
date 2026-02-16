@@ -3,10 +3,53 @@
 import asyncio
 import logging
 import time
+from typing import Any
 
 from langchain_core.messages import HumanMessage
 
 logger = logging.getLogger("skippy")
+
+# Cache of specialized graphs for scheduled tasks
+_scheduled_graphs: dict[str, Any] = {}
+
+# Tool module requirements for each scheduled task
+SCHEDULED_TASK_TOOL_MODULES = {
+    "morning-briefing": ["google_calendar", "tasks", "telegram"],
+    "evening-summary": ["google_calendar", "tasks", "telegram"],
+    "upcoming-event-check": ["google_calendar", "telegram"],
+}
+
+
+async def get_graph_for_task(task_id: str):
+    """Get or create a graph with appropriate tools for the scheduled task.
+
+    Args:
+        task_id: The scheduled task identifier (e.g., "morning-briefing")
+
+    Returns:
+        Compiled graph with filtered tools for this task, or the default
+        graph with all tools if task_id is not in the mapping.
+    """
+    from skippy.main import app
+    from skippy.agent.graph import build_graph
+
+    # For chat-created scheduled tasks, use the default graph (all tools)
+    if task_id not in SCHEDULED_TASK_TOOL_MODULES:
+        logger.info(f"Using default graph for custom task '{task_id}'")
+        return app.state.graph
+
+    # Check cache
+    if task_id not in _scheduled_graphs:
+        # Build and cache a filtered graph for this task
+        modules = SCHEDULED_TASK_TOOL_MODULES[task_id]
+        logger.info(f"Building specialized graph for '{task_id}' with modules: {modules}")
+
+        _scheduled_graphs[task_id] = await build_graph(
+            app.state.checkpointer,
+            tool_modules=modules
+        )
+
+    return _scheduled_graphs[task_id]
 
 
 async def execute_scheduled_task(task_id: str, prompt: str) -> str:
@@ -15,9 +58,8 @@ async def execute_scheduled_task(task_id: str, prompt: str) -> str:
     The prompt becomes a HumanMessage sent through the full agent pipeline,
     so Skippy can use tools, access memories, and respond in character.
     """
-    from skippy.main import app
-
-    graph = app.state.graph
+    # Get appropriate graph for this task (filtered or default)
+    graph = await get_graph_for_task(task_id)
     thread_id = f"scheduled-{task_id}-{int(time.time())}"
 
     logger.info("Executing scheduled task '%s'", task_id)

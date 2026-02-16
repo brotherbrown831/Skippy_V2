@@ -22,6 +22,9 @@ from skippy.web.home import router as home_router
 from skippy.web.memories import router as memories_router
 from skippy.web.people import router as people_router
 from skippy.web.tasks import router as tasks_router
+from skippy.web.calendar import router as calendar_router
+from skippy.web.reminders import router as reminders_router
+from skippy.web.scheduled import router as scheduled_router
 
 logger = logging.getLogger("skippy")
 
@@ -102,7 +105,8 @@ async def lifespan(app: FastAPI):
     await initialize_schema()
     async with AsyncPostgresSaver.from_conn_string(settings.database_url) as checkpointer:
         await checkpointer.setup()
-        app.state.graph = await build_graph(checkpointer)
+        # Build agent graph with all tools (voice/chat/telegram use full access)
+        app.state.graph = await build_graph(checkpointer, tool_modules=None)
         logger.info("Skippy agent ready")
         await start_scheduler(app)
         await start_telegram(app)
@@ -118,6 +122,9 @@ app.include_router(home_router)
 app.include_router(memories_router)
 app.include_router(people_router)
 app.include_router(tasks_router)
+app.include_router(calendar_router)
+app.include_router(reminders_router)
+app.include_router(scheduled_router)
 
 
 # --- Endpoints ---

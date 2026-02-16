@@ -24,8 +24,6 @@ from skippy.tools import collect_tools
 
 logger = logging.getLogger("skippy")
 
-tools: list = collect_tools()
-
 
 async def retrieve_memories_node(state: AgentState, config: RunnableConfig) -> dict:
     """Retrieve relevant semantic memories based on the user's message."""
@@ -47,45 +45,6 @@ async def retrieve_memories_node(state: AgentState, config: RunnableConfig) -> d
     return {"memories": memories}
 
 
-async def agent_node(state: AgentState, config: RunnableConfig) -> dict:
-    """Call the LLM with personality prompt, memories, and conversation history."""
-    source = config.get("configurable", {}).get("source", "voice")
-
-    # Pick prompt and token limit based on source
-    if source == "voice":
-        system_prompt = VOICE_SYSTEM_PROMPT
-        max_tokens = settings.voice_max_tokens
-    else:
-        system_prompt = CHAT_SYSTEM_PROMPT
-        max_tokens = settings.chat_max_tokens
-
-    # Inject current date/time so the LLM knows when "today" and "tonight" are
-    tz = ZoneInfo(settings.timezone)
-    now = datetime.now(tz).strftime("%A, %B %d, %Y at %I:%M %p %Z")
-    system_prompt += f"\n\nCurrent date and time: {now}"
-
-    # Inject memories into system prompt if we have any
-    memories = state.get("memories", [])
-    if memories:
-        memory_text = "\n".join(f"- {m['content']}" for m in memories)
-        system_prompt += MEMORY_CONTEXT_TEMPLATE.format(memories=memory_text)
-
-    llm = ChatOpenAI(
-        model=settings.llm_model,
-        api_key=settings.openai_api_key,
-        max_tokens=max_tokens,
-        temperature=0.7,
-    )
-
-    # Bind tools if we have any
-    if tools:
-        llm = llm.bind_tools(tools)
-
-    # Build message list: system prompt + conversation history
-    messages = [SystemMessage(content=system_prompt)] + state["messages"]
-
-    response = await llm.ainvoke(messages)
-    return {"messages": [response]}
 
 
 async def evaluate_memory_node(state: AgentState, config: RunnableConfig) -> dict:
@@ -141,8 +100,61 @@ def should_use_tools(state: AgentState) -> str:
     return "evaluate_memory"
 
 
-async def build_graph(checkpointer):
-    """Build and compile the LangGraph agent graph."""
+async def build_graph(checkpointer, tool_modules: list[str] | None = None):
+    """Build and compile the LangGraph agent graph.
+
+    Args:
+        checkpointer: Persistence layer for conversation state.
+        tool_modules: Optional list of tool module names to include.
+                     If None, all tools are included (default for voice/chat).
+
+    Returns:
+        Compiled graph ready for invocation.
+    """
+    # Collect tools (filtered or all)
+    tools = collect_tools(include_modules=tool_modules)
+    logger.info(f"Building graph with {len(tools)} tools")
+
+    # Define agent_node as a closure so it can access the local 'tools' variable
+    async def agent_node(state: AgentState, config: RunnableConfig) -> dict:
+        """Call the LLM with personality prompt, memories, and conversation history."""
+        source = config.get("configurable", {}).get("source", "voice")
+
+        # Pick prompt and token limit based on source
+        if source == "voice":
+            system_prompt = VOICE_SYSTEM_PROMPT
+            max_tokens = settings.voice_max_tokens
+        else:
+            system_prompt = CHAT_SYSTEM_PROMPT
+            max_tokens = settings.chat_max_tokens
+
+        # Inject current date/time so the LLM knows when "today" and "tonight" are
+        tz = ZoneInfo(settings.timezone)
+        now = datetime.now(tz).strftime("%A, %B %d, %Y at %I:%M %p %Z")
+        system_prompt += f"\n\nCurrent date and time: {now}"
+
+        # Inject memories into system prompt if we have any
+        memories = state.get("memories", [])
+        if memories:
+            memory_text = "\n".join(f"- {m['content']}" for m in memories)
+            system_prompt += MEMORY_CONTEXT_TEMPLATE.format(memories=memory_text)
+
+        llm = ChatOpenAI(
+            model=settings.llm_model,
+            api_key=settings.openai_api_key,
+            max_tokens=max_tokens,
+            temperature=0.7,
+        )
+
+        # Bind tools if we have any (uses local 'tools' variable from closure)
+        if tools:
+            llm = llm.bind_tools(tools)
+
+        # Build message list: system prompt + conversation history
+        messages = [SystemMessage(content=system_prompt)] + state["messages"]
+
+        response = await llm.ainvoke(messages)
+        return {"messages": [response]}
 
     # Build the graph
     workflow = StateGraph(AgentState)

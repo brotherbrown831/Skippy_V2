@@ -21,8 +21,16 @@ from skippy.tools.tavily import get_tools as _tavily_tools
 logger = logging.getLogger("skippy")
 
 
-def collect_tools() -> list:
-    """Gather all tools from all tool modules."""
+def collect_tools(include_modules: list[str] | None = None) -> list:
+    """Gather tools from all tool modules, optionally filtered by module names.
+
+    Args:
+        include_modules: If provided, only load tools from these modules.
+                        If None, load all modules (default behavior).
+
+    Returns:
+        List of LangChain tool objects.
+    """
     sources = [
         ("home_assistant", _ha_tools),
         ("google_calendar", _calendar_tools),
@@ -36,6 +44,11 @@ def collect_tools() -> list:
         ("tasks", _task_tools),
         ("tavily", _tavily_tools),
     ]
+
+    # Filter sources if include_modules is provided
+    if include_modules is not None:
+        sources = [(name, fn) for name, fn in sources if name in include_modules]
+        logger.info("Filtering tools to modules: %s", include_modules)
 
     all_tools = []
     for name, get_tools_fn in sources:

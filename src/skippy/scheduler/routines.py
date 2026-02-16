@@ -161,6 +161,70 @@ def _build_predefined_routines() -> list:
 PREDEFINED_ROUTINES = _build_predefined_routines()
 
 
+async def check_and_notify_snoozed_reminders() -> None:
+    """Check for snoozed reminders that are due and send notifications.
+
+    This job runs every 5 minutes to catch reminder snoozes when they expire.
+    If a reminder's snoozed_until time has passed, it sends a Telegram message
+    to remind the user and updates the status back to 'pending'.
+    """
+    try:
+        async with await psycopg.AsyncConnection.connect(
+            settings.database_url, autocommit=True
+        ) as conn:
+            async with conn.cursor() as cur:
+                # Find snoozed reminders that are due to wake up
+                await cur.execute("""
+                    SELECT reminder_id, event_id, event_summary, event_start
+                    FROM reminder_acknowledgments
+                    WHERE user_id = %s
+                      AND status = 'snoozed'
+                      AND snoozed_until <= NOW()
+                    ORDER BY event_start
+                """, ("nolan",))
+
+                expired_snoozes = await cur.fetchall()
+
+                if not expired_snoozes:
+                    logger.debug("No snoozed reminders to wake up")
+                    return
+
+                # Update status back to pending
+                reminder_ids = [r[0] for r in expired_snoozes]
+                for reminder_id in reminder_ids:
+                    await cur.execute("""
+                        UPDATE reminder_acknowledgments
+                        SET status = 'pending',
+                            updated_at = NOW()
+                        WHERE reminder_id = %s
+                    """, (reminder_id,))
+
+                logger.info(f"Woke up {len(expired_snoozes)} snoozed reminders")
+
+                # Send Telegram notification for each
+                for reminder_id, event_id, event_summary, event_start in expired_snoozes:
+                    try:
+                        # Import here to avoid circular imports
+                        from skippy.tools.telegram import send_telegram_message
+
+                        # Format event start time
+                        if event_start:
+                            event_time = event_start.strftime("%I:%M %p") if hasattr(event_start, 'strftime') else str(event_start)
+                        else:
+                            event_time = "Unknown"
+
+                        message = f"⏰ Snooze expired: {event_summary} at {event_time}"
+                        await send_telegram_message.ainvoke({
+                            "message": message,
+                            "thread_title": "Snooze Expiration"
+                        })
+                    except Exception as e:
+                        logger.error(f"Failed to send snooze reminder for {event_summary}: {e}")
+
+    except Exception as e:
+        logger.error(f"Error in check_and_notify_snoozed_reminders: {e}")
+
+
 def _build_direct_routines() -> list:
     """Build DIRECT_ROUTINES list based on config settings."""
     routines = []
@@ -190,6 +254,16 @@ def _build_direct_routines() -> list:
                 "trigger": recalc_trigger,
             }
         )
+
+    # Snooze check (runs every 5 minutes to catch reminder snooze expirations)
+    routines.append(
+        {
+            "task_id": "check-snoozed-reminders",
+            "name": "Snooze Reminder Check",
+            "func": "skippy.scheduler.routines:check_and_notify_snoozed_reminders",
+            "trigger": IntervalTrigger(minutes=5),
+        }
+    )
 
     return routines
 

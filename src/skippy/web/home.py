@@ -1242,6 +1242,9 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         .card.entities { --accent: #89ddff; }
         .card.tasks { --accent: #82aaff; }
         .card.pgadmin { --accent: #ffc857; }
+        .card.calendar { --accent: #4285f4; }
+        .card.reminders { --accent: #fbbc04; }
+        .card.scheduled { --accent: #ea4335; }
 
         /* Modal */
         .modal {
@@ -1707,14 +1710,14 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                 <div class="card-button">View Tasks →</div>
             </a>
 
-            <a href="http://localhost:5050" target="_blank" class="card pgadmin">
+            <a href="http://10.0.10.132:5050" target="_blank" class="card pgadmin">
                 <div class="card-icon">🗄️</div>
                 <h2>pgAdmin</h2>
                 <p>PostgreSQL database administration & query builder</p>
                 <div class="card-stats">
                     <div class="stat">
                         <span class="stat-label">Host</span>
-                        <span class="stat-value">localhost:5050</span>
+                        <span class="stat-value">10.0.10.132:5050</span>
                     </div>
                     <div class="stat">
                         <span class="stat-label">User</span>
@@ -1722,6 +1725,57 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                     </div>
                 </div>
                 <div class="card-button">Open pgAdmin →</div>
+            </a>
+
+            <a href="/calendar" class="card calendar">
+                <div class="card-icon">📅</div>
+                <h2>Calendar</h2>
+                <p>View and manage Google Calendar events</p>
+                <div class="card-stats">
+                    <div class="stat">
+                        <span class="stat-label">Integration</span>
+                        <span class="stat-value">Google Calendar</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Account</span>
+                        <span class="stat-value">brown.nolan@gmail.com</span>
+                    </div>
+                </div>
+                <div class="card-button">View Calendar →</div>
+            </a>
+
+            <a href="/reminders" class="card reminders">
+                <div class="card-icon">🔔</div>
+                <h2>Reminders</h2>
+                <p>Event reminder notifications and acknowledgments</p>
+                <div class="card-stats">
+                    <div class="stat">
+                        <span class="stat-label">Pending</span>
+                        <span class="stat-value" id="pendingRemindersCount">-</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Total</span>
+                        <span class="stat-value" id="totalRemindersCount">-</span>
+                    </div>
+                </div>
+                <div class="card-button">View Reminders →</div>
+            </a>
+
+            <a href="/scheduled" class="card scheduled">
+                <div class="card-icon">⏰</div>
+                <h2>Scheduled Tasks</h2>
+                <p>Recurring jobs, timers, and automated routines</p>
+                <div class="card-stats">
+                    <div class="stat">
+                        <span class="stat-label">Active Jobs</span>
+                        <span class="stat-value" id="activeJobsCount">-</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Source</span>
+                        <span class="stat-value">Predefined + Chat</span>
+                    </div>
+                </div>
+                <div class="card-button">View Tasks →</div>
             </a>
         </div>
 
@@ -2253,12 +2307,35 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
             }
         }
 
+        async function loadReminderStats() {
+            try {
+                const pending = await fetch('/api/reminders/pending').then(r => r.json());
+                const all = await fetch('/api/reminders').then(r => r.json());
+                document.getElementById('pendingRemindersCount').textContent = (pending || []).length;
+                document.getElementById('totalRemindersCount').textContent = (all || []).length;
+            } catch (error) {
+                console.error('Failed to load reminder stats:', error);
+            }
+        }
+
+        async function loadScheduledTaskStats() {
+            try {
+                const tasks = await fetch('/api/scheduled_tasks').then(r => r.json());
+                const active = (tasks || []).filter(t => t.enabled).length;
+                document.getElementById('activeJobsCount').textContent = active;
+            } catch (error) {
+                console.error('Failed to load scheduled task stats:', error);
+            }
+        }
+
         // Initialize
         loadPreferences();
         loadStats();
         loadRecentActivity();
         loadSystemHealth();
         loadCharts();
+        loadReminderStats();
+        loadScheduledTaskStats();
 
         // Auto-refresh will be set by loadPreferences based on user settings
     </script>
