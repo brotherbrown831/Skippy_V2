@@ -59,10 +59,22 @@ async def get_dashboard_stats():
                 )
                 enabled_entities = (await cur.fetchone())[0]
 
+                # Get task stats
+                await cur.execute(
+                    "SELECT COUNT(*) FROM tasks WHERE user_id = 'nolan' AND status NOT IN ('done', 'archived')"
+                )
+                total_tasks = (await cur.fetchone())[0]
+
+                await cur.execute(
+                    "SELECT COUNT(*) FROM tasks WHERE user_id = 'nolan' AND due_date::date = CURRENT_DATE AND status NOT IN ('done', 'archived')"
+                )
+                due_today_tasks = (await cur.fetchone())[0]
+
                 return {
                     "memories": {"total": total_memories, "recent": recent_memories},
                     "people": {"total": total_people, "important": important_people},
                     "ha_entities": {"total": total_entities, "enabled": enabled_entities},
+                    "tasks": {"total": total_tasks, "due_today": due_today_tasks},
                 }
     except Exception:
         logger.exception("Failed to fetch dashboard stats")
@@ -543,6 +555,518 @@ async def get_chart_data():
         }
 
 
+# ============================================================================
+# TASK MANAGEMENT ENDPOINTS (Phase 2)
+# ============================================================================
+
+
+@router.get("/api/tasks/today")
+async def get_tasks_today():
+    """Return tasks for Today panel: active tasks not deferred."""
+    try:
+        async with await psycopg.AsyncConnection.connect(settings.database_url) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT task_id, title, project, priority, due_date, status,
+                           urgency_score, estimated_minutes
+                    FROM tasks
+                    WHERE user_id = 'nolan'
+                      AND status NOT IN ('done', 'archived')
+                      AND is_backlog = FALSE
+                      AND (defer_until IS NULL OR defer_until <= NOW())
+                    ORDER BY urgency_score DESC, due_date ASC NULLS LAST
+                    LIMIT 20
+                    """
+                )
+                rows = await cur.fetchall()
+                columns = [desc.name for desc in cur.description]
+
+                tasks = []
+                for row in rows:
+                    task = dict(zip(columns, row))
+                    if task.get("due_date"):
+                        task["due_date"] = task["due_date"].isoformat()
+                    tasks.append(task)
+
+                return {"tasks": tasks}
+    except Exception:
+        logger.exception("Failed to fetch today's tasks")
+        return {"tasks": []}
+
+
+@router.get("/api/tasks/backlog")
+async def get_tasks_backlog():
+    """Return backlog tasks sorted by backlog_rank."""
+    try:
+        async with await psycopg.AsyncConnection.connect(settings.database_url) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT task_id, title, project, priority, tags, backlog_rank,
+                           created_at, estimated_minutes
+                    FROM tasks
+                    WHERE user_id = 'nolan'
+                      AND is_backlog = TRUE
+                      AND status NOT IN ('done', 'archived')
+                    ORDER BY backlog_rank ASC NULLS LAST, created_at DESC
+                    LIMIT 50
+                    """
+                )
+                rows = await cur.fetchall()
+                columns = [desc.name for desc in cur.description]
+
+                tasks = []
+                for row in rows:
+                    task = dict(zip(columns, row))
+                    if task.get("created_at"):
+                        task["created_at"] = task["created_at"].isoformat()
+                    tasks.append(task)
+
+                return {"tasks": tasks}
+    except Exception:
+        logger.exception("Failed to fetch backlog tasks")
+        return {"tasks": []}
+
+
+@router.post("/api/tasks")
+async def create_task_api(data: dict = Body(...)):
+    """Create a new task via API (for Quick Actions modal)."""
+    try:
+        from skippy.utils.activity_logger import log_activity
+
+        title = data.get("title", "").strip()
+        description = data.get("description", "").strip()
+        priority = int(data.get("priority", 0))
+        due_date_str = data.get("due_date", "").strip()
+        project = data.get("project", "").strip()
+        is_backlog = data.get("is_backlog", False)
+
+        if not title:
+            return {"ok": False, "error": "Title is required"}
+
+        # Parse due_date using dateutil if available
+        due_date = None
+        if due_date_str:
+            try:
+                from dateutil import parser as dateutil_parser
+                due_date = dateutil_parser.parse(due_date_str)
+            except (ImportError, ValueError, TypeError):
+                pass
+
+        # Determine initial status
+        status = "backlog" if is_backlog else "inbox"
+
+        # Calculate urgency score
+        priority_weights = {0: 0, 1: 10, 2: 25, 3: 50, 4: 100}
+        urgency_score = float(priority_weights.get(priority, 0))
+
+        # Insert task
+        async with await psycopg.AsyncConnection.connect(
+            settings.database_url, autocommit=True
+        ) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO tasks (
+                        user_id, title, description, priority, due_date, project,
+                        is_backlog, status, urgency_score
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING task_id
+                    """,
+                    (
+                        "nolan",
+                        title,
+                        description or None,
+                        priority,
+                        due_date,
+                        project or None,
+                        is_backlog,
+                        status,
+                        urgency_score,
+                    ),
+                )
+                task_id = (await cur.fetchone())[0]
+
+        # Log activity
+        await log_activity(
+            activity_type="task_created",
+            entity_type="task",
+            entity_id=str(task_id),
+            description=f"Added task: {title}",
+            metadata={"project": project, "priority": priority},
+        )
+
+        return {"ok": True, "task_id": task_id}
+
+    except Exception as e:
+        logger.exception("Failed to create task")
+        return {"ok": False, "error": str(e)}
+
+
+@router.put("/api/tasks/{task_id}/complete")
+async def complete_task_api(task_id: int):
+    """Mark a task as completed."""
+    try:
+        from skippy.utils.activity_logger import log_activity
+
+        async with await psycopg.AsyncConnection.connect(
+            settings.database_url, autocommit=True
+        ) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE tasks
+                    SET status = 'done', completed_at = NOW(), updated_at = NOW()
+                    WHERE task_id = %s AND user_id = 'nolan'
+                    RETURNING title
+                    """,
+                    (task_id,),
+                )
+                result = await cur.fetchone()
+
+                if not result:
+                    return {"ok": False, "error": "Task not found"}
+
+                title = result[0]
+
+        # Log activity
+        await log_activity(
+            activity_type="task_completed",
+            entity_type="task",
+            entity_id=str(task_id),
+            description=f"Completed task: {title}",
+        )
+
+        return {"ok": True}
+
+    except Exception as e:
+        logger.exception("Failed to complete task")
+        return {"ok": False, "error": str(e)}
+
+
+@router.put("/api/tasks/{task_id}/promote")
+async def promote_task_api(task_id: int):
+    """Promote a backlog task to active inbox."""
+    try:
+        from skippy.utils.activity_logger import log_activity
+
+        async with await psycopg.AsyncConnection.connect(
+            settings.database_url, autocommit=True
+        ) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE tasks
+                    SET is_backlog = FALSE, status = 'inbox', updated_at = NOW()
+                    WHERE task_id = %s AND user_id = 'nolan'
+                    RETURNING title
+                    """,
+                    (task_id,),
+                )
+                result = await cur.fetchone()
+
+                if not result:
+                    return {"ok": False, "error": "Task not found"}
+
+                title = result[0]
+
+        # Log activity
+        await log_activity(
+            activity_type="task_promoted",
+            entity_type="task",
+            entity_id=str(task_id),
+            description=f"Promoted task to active: {title}",
+        )
+
+        return {"ok": True}
+
+    except Exception as e:
+        logger.exception("Failed to promote task")
+        return {"ok": False, "error": str(e)}
+
+
+@router.get("/api/tasks/stats")
+async def get_task_stats():
+    """Return task statistics for System Health modal and cards."""
+    try:
+        async with await psycopg.AsyncConnection.connect(settings.database_url) as conn:
+            async with conn.cursor() as cur:
+                # Total active tasks
+                await cur.execute(
+                    """
+                    SELECT COUNT(*) FROM tasks
+                    WHERE user_id = 'nolan' AND status NOT IN ('done', 'archived')
+                    """
+                )
+                total_active = (await cur.fetchone())[0]
+
+                # Overdue count
+                await cur.execute(
+                    """
+                    SELECT COUNT(*) FROM tasks
+                    WHERE user_id = 'nolan'
+                      AND status NOT IN ('done', 'archived')
+                      AND due_date < NOW()
+                    """
+                )
+                overdue = (await cur.fetchone())[0]
+
+                # Due today
+                await cur.execute(
+                    """
+                    SELECT COUNT(*) FROM tasks
+                    WHERE user_id = 'nolan'
+                      AND status NOT IN ('done', 'archived')
+                      AND due_date::date = CURRENT_DATE
+                    """
+                )
+                due_today = (await cur.fetchone())[0]
+
+                # Backlog size
+                await cur.execute(
+                    """
+                    SELECT COUNT(*) FROM tasks
+                    WHERE user_id = 'nolan'
+                      AND is_backlog = TRUE
+                      AND status NOT IN ('done', 'archived')
+                    """
+                )
+                backlog_size = (await cur.fetchone())[0]
+
+                # Completed last 7 days
+                await cur.execute(
+                    """
+                    SELECT COUNT(*) FROM tasks
+                    WHERE user_id = 'nolan'
+                      AND status = 'done'
+                      AND completed_at >= NOW() - INTERVAL '7 days'
+                    """
+                )
+                completed_week = (await cur.fetchone())[0]
+
+                # Completion rate (completed / total over last 30 days)
+                await cur.execute(
+                    """
+                    SELECT
+                        COUNT(*) FILTER (WHERE status = 'done') as completed,
+                        COUNT(*) as total
+                    FROM tasks
+                    WHERE user_id = 'nolan'
+                      AND created_at >= NOW() - INTERVAL '30 days'
+                    """
+                )
+                row = await cur.fetchone()
+                completed_month = row[0] if row else 0
+                total_month = row[1] if row else 1
+                completion_rate = (
+                    (completed_month / total_month * 100) if total_month > 0 else 0
+                )
+
+                return {
+                    "total_active": total_active,
+                    "overdue": overdue,
+                    "due_today": due_today,
+                    "backlog_size": backlog_size,
+                    "completed_week": completed_week,
+                    "completion_rate": round(completion_rate, 1),
+                }
+
+    except Exception:
+        logger.exception("Failed to fetch task stats")
+        return {
+            "total_active": 0,
+            "overdue": 0,
+            "due_today": 0,
+            "backlog_size": 0,
+            "completed_week": 0,
+            "completion_rate": 0,
+        }
+
+
+@router.get("/api/tasks/chart_data")
+async def get_task_chart_data():
+    """Return data for task completion chart (last 7 days)."""
+    try:
+        async with await psycopg.AsyncConnection.connect(settings.database_url) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT
+                        completed_at::date as day,
+                        COUNT(*) as count
+                    FROM tasks
+                    WHERE user_id = 'nolan'
+                      AND status = 'done'
+                      AND completed_at >= CURRENT_DATE - INTERVAL '6 days'
+                    GROUP BY completed_at::date
+                    ORDER BY day
+                    """
+                )
+                rows = await cur.fetchall()
+
+                # Fill in missing days with 0
+                from datetime import date, timedelta
+
+                labels = []
+                data = []
+                for i in range(6, -1, -1):
+                    day = date.today() - timedelta(days=i)
+                    labels.append(day.strftime("%a"))
+
+                    # Find count for this day
+                    count = 0
+                    for row in rows:
+                        if row[0] == day:
+                            count = row[1]
+                            break
+                    data.append(count)
+
+                return {"labels": labels, "data": data}
+
+    except Exception:
+        logger.exception("Failed to fetch task chart data")
+        return {"labels": [], "data": []}
+
+
+@router.put("/api/tasks/{task_id}")
+async def update_task_api(task_id: int, data: dict = Body(...)):
+    """Update a task's status or other fields."""
+    try:
+        from skippy.utils.activity_logger import log_activity
+
+        status = data.get("status")
+        if not status:
+            return {"ok": False, "error": "Status is required"}
+
+        async with await psycopg.AsyncConnection.connect(
+            settings.database_url, autocommit=True
+        ) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE tasks
+                    SET status = %s, updated_at = NOW()
+                    WHERE task_id = %s AND user_id = 'nolan'
+                    RETURNING title
+                    """,
+                    (status, task_id),
+                )
+                result = await cur.fetchone()
+
+                if not result:
+                    return {"ok": False, "error": "Task not found"}
+
+                title = result[0]
+
+        # Log activity
+        await log_activity(
+            activity_type="task_updated",
+            entity_type="task",
+            entity_id=str(task_id),
+            description=f"Updated task status to {status}: {title}",
+        )
+
+        return {"ok": True}
+
+    except Exception as e:
+        logger.exception("Failed to update task")
+        return {"ok": False, "error": str(e)}
+
+
+@router.put("/api/tasks/{task_id}/defer")
+async def defer_task_api(task_id: int, data: dict = Body(...)):
+    """Defer a task until a specific date."""
+    try:
+        from skippy.utils.activity_logger import log_activity
+
+        defer_until_str = data.get("defer_until", "").strip()
+        if not defer_until_str:
+            return {"ok": False, "error": "defer_until is required"}
+
+        # Parse defer_until
+        try:
+            from dateutil import parser as dateutil_parser
+            defer_until = dateutil_parser.parse(defer_until_str)
+        except (ImportError, ValueError, TypeError):
+            return {"ok": False, "error": "Invalid date format"}
+
+        async with await psycopg.AsyncConnection.connect(
+            settings.database_url, autocommit=True
+        ) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE tasks
+                    SET defer_until = %s, updated_at = NOW()
+                    WHERE task_id = %s AND user_id = 'nolan'
+                    RETURNING title
+                    """,
+                    (defer_until, task_id),
+                )
+                result = await cur.fetchone()
+
+                if not result:
+                    return {"ok": False, "error": "Task not found"}
+
+                title = result[0]
+
+        # Log activity
+        await log_activity(
+            activity_type="task_deferred",
+            entity_type="task",
+            entity_id=str(task_id),
+            description=f"Deferred task until {defer_until_str}: {title}",
+        )
+
+        return {"ok": True}
+
+    except Exception as e:
+        logger.exception("Failed to defer task")
+        return {"ok": False, "error": str(e)}
+
+
+@router.delete("/api/tasks/{task_id}")
+async def delete_task_api(task_id: int):
+    """Delete a task."""
+    try:
+        from skippy.utils.activity_logger import log_activity
+
+        async with await psycopg.AsyncConnection.connect(
+            settings.database_url, autocommit=True
+        ) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    DELETE FROM tasks
+                    WHERE task_id = %s AND user_id = 'nolan'
+                    RETURNING title
+                    """,
+                    (task_id,),
+                )
+                result = await cur.fetchone()
+
+                if not result:
+                    return {"ok": False, "error": "Task not found"}
+
+                title = result[0]
+
+        # Log activity
+        await log_activity(
+            activity_type="task_deleted",
+            entity_type="task",
+            entity_id=str(task_id),
+            description=f"Deleted task: {title}",
+        )
+
+        return {"ok": True}
+
+    except Exception as e:
+        logger.exception("Failed to delete task")
+        return {"ok": False, "error": str(e)}
+
+
 HOMEPAGE_HTML = """<!DOCTYPE html>
 <html>
 <head>
@@ -780,6 +1304,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         .card.memories { --accent: #7eb8ff; }
         .card.people { --accent: #c792ea; }
         .card.entities { --accent: #89ddff; }
+        .card.tasks { --accent: #82aaff; }
         .card.pgadmin { --accent: #ffc857; }
 
         /* Modal */
@@ -1108,6 +1633,41 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         </div>
     </div>
 
+    <div id="add-task-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>✓ Add Task</h3>
+                <button class="modal-close" onclick="closeAddTaskModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <label>Title *</label>
+                <input type="text" id="task-title" placeholder="What needs to be done?" required>
+                <label>Description</label>
+                <textarea id="task-description" rows="3" placeholder="Additional details..."></textarea>
+                <label>Priority</label>
+                <select id="task-priority">
+                    <option value="0">None</option>
+                    <option value="1">Low</option>
+                    <option value="2" selected>Medium</option>
+                    <option value="3">High</option>
+                    <option value="4">Urgent</option>
+                </select>
+                <label>Due Date</label>
+                <input type="datetime-local" id="task-due-date">
+                <label>Project</label>
+                <input type="text" id="task-project" placeholder="e.g., work, home, skippy">
+                <label>
+                    <input type="checkbox" id="task-is-backlog">
+                    Add to backlog (long-term, not urgent)
+                </label>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-cancel" onclick="closeAddTaskModal()">Cancel</button>
+                <button class="btn-primary" onclick="submitAddTask()">Add Task</button>
+            </div>
+        </div>
+    </div>
+
     <div id="settings-modal" class="modal" style="display: none;">
         <div class="modal-content">
             <div class="modal-header">
@@ -1154,6 +1714,9 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
             </button>
             <button class="action-btn action-btn-secondary" onclick="openAddPersonModal()">
                 <span>👤</span> Add Person
+            </button>
+            <button class="action-btn action-btn-accent" onclick="openAddTaskModal()">
+                <span>✓</span> Add Task
             </button>
             <button class="action-btn action-btn-accent" onclick="syncEntitiesNow()">
                 <span>🔄</span> Sync HA
@@ -1210,6 +1773,23 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                     </div>
                 </div>
                 <div class="card-button">View Entities →</div>
+            </a>
+
+            <a href="/tasks" class="card tasks">
+                <div class="card-icon">✓</div>
+                <h2>Tasks</h2>
+                <p>Track todos, projects, and priorities</p>
+                <div class="card-stats">
+                    <div class="stat">
+                        <span class="stat-label">Active</span>
+                        <span class="stat-value" id="tasks-total">-</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Due Today</span>
+                        <span class="stat-value" id="tasks-due-today">-</span>
+                    </div>
+                </div>
+                <div class="card-button">View Tasks →</div>
             </a>
 
             <a href="http://localhost:5050" target="_blank" class="card pgadmin">
@@ -1297,6 +1877,10 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                 document.getElementById('people-important').textContent = data.people.important;
                 document.getElementById('entities-total').textContent = data.ha_entities.total;
                 document.getElementById('entities-enabled').textContent = data.ha_entities.enabled;
+                if (data.tasks) {
+                    document.getElementById('tasks-total').textContent = data.tasks.total;
+                    document.getElementById('tasks-due-today').textContent = data.tasks.due_today;
+                }
             } catch (error) {
                 console.error('Failed to load stats:', error);
             }
@@ -1472,6 +2056,69 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                 loadRecentActivity();
             } catch (error) {
                 alert('Sync failed: ' + error);
+            }
+        }
+
+        // Task Management
+        function openAddTaskModal() {
+            document.getElementById('add-task-modal').style.display = 'flex';
+        }
+
+        function closeAddTaskModal() {
+            document.getElementById('add-task-modal').style.display = 'none';
+            // Clear form
+            document.getElementById('task-title').value = '';
+            document.getElementById('task-description').value = '';
+            document.getElementById('task-priority').value = '2';
+            document.getElementById('task-due-date').value = '';
+            document.getElementById('task-project').value = '';
+            document.getElementById('task-is-backlog').checked = false;
+        }
+
+        async function submitAddTask() {
+            const title = document.getElementById('task-title').value.trim();
+            const description = document.getElementById('task-description').value.trim();
+            const priority = parseInt(document.getElementById('task-priority').value);
+            const dueDate = document.getElementById('task-due-date').value;
+            const project = document.getElementById('task-project').value.trim();
+            const isBacklog = document.getElementById('task-is-backlog').checked;
+
+            if (!title) {
+                alert('Title is required');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/tasks', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        title, description, priority, due_date: dueDate, project, is_backlog: isBacklog
+                    })
+                });
+                const result = await response.json();
+
+                if (result.ok) {
+                    closeAddTaskModal();
+                    loadStats();
+                    loadRecentActivity();
+                    alert('Task added successfully!');
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (error) {
+                alert('Failed to add task: ' + error);
+            }
+        }
+
+        async function loadTaskStats() {
+            try {
+                const response = await fetch('/api/tasks/stats');
+                const stats = await response.json();
+                document.getElementById('tasks-total').textContent = stats.total_active;
+                document.getElementById('tasks-due-today').textContent = stats.due_today;
+            } catch (error) {
+                console.error('Failed to load task stats:', error);
             }
         }
 

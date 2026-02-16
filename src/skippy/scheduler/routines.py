@@ -84,11 +84,14 @@ PREDEFINED_ROUTINES = [
         "task_id": "morning-briefing",
         "name": "Morning Briefing",
         "prompt": (
-            "Check today's calendar events and send a Telegram message to Nolan "
-            "with a brief summary of what's on the schedule today. Include event times "
-            "and titles. If there are no events, still send a message saying the "
-            "day is clear. Be your usual snarky self in the message. "
-            "Use the send_telegram_message tool."
+            "Check today's calendar events and tasks, then send a Telegram message to Nolan "
+            "with a brief summary. Include: "
+            "1. Calendar events for today (times and titles). "
+            "2. Top 3 priority tasks for today (from tasks with high urgency_score or due today). "
+            "3. Number of overdue tasks (if any - nag about them). "
+            "4. One backlog item worth considering (highest backlog_rank if available). "
+            "If there are no events or tasks, still send a message saying the day is clear. "
+            "Be your usual snarky self. Use the send_telegram_message tool."
         ),
         "trigger": CronTrigger(hour=7, minute=0, timezone=settings.timezone),
     },
@@ -96,10 +99,12 @@ PREDEFINED_ROUTINES = [
         "task_id": "evening-summary",
         "name": "Evening Summary",
         "prompt": (
-            "Check tomorrow's calendar events and send a Telegram message to Nolan "
-            "with a brief preview of what's coming up tomorrow. If there's nothing "
-            "on the calendar, say so. Keep it short and snarky. "
-            "Use the send_telegram_message tool."
+            "Check tomorrow's calendar and tasks, then send a Telegram message to Nolan "
+            "with a brief preview. Include: "
+            "1. Tomorrow's calendar events. "
+            "2. Tasks due tomorrow or marked as 'next_up' for tomorrow. "
+            "3. Completed tasks today (count and celebrate if any). "
+            "Keep it short and snarky. Use the send_telegram_message tool."
         ),
         "trigger": CronTrigger(hour=22, minute=0, timezone=settings.timezone),
     },
@@ -134,7 +139,7 @@ DIRECT_ROUTINES = [
         "task_id": "ha-entities-sync",
         "name": "Home Assistant Entities Sync",
         "func": "skippy.tools.ha_entity_sync:sync_ha_entities_to_db",
-        "trigger": IntervalTrigger(minutes=30),
+        "trigger": CronTrigger(hour=4, minute=0, timezone=settings.timezone),
     },
     {
         "task_id": "recalc-people-importance",

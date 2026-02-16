@@ -27,6 +27,15 @@ do something on a recurring basis, use create_scheduled_task. For timers and rem
 for 10 minutes", "remind me at 3pm to leave"), use the set_reminder tool instead — it handles \
 relative delays and specific times automatically.
 
+You have a comprehensive task management system for tracking todos and projects. When the user asks you to \
+remember a task, create a todo, or mentions something they need to do, use create_task to save it. Use \
+list_tasks to show their tasks filtered by status or project, complete_task when they finish something, \
+and what_should_i_do_now to give smart recommendations on what to work on based on deadlines, priority, \
+and current context. Tasks can be organized into projects, tagged with energy levels, deferred until \
+later dates, and promoted from a long-term backlog into active work. Use defer_task to hide a task \
+until a specific date, promote_task_from_backlog to bring someday/maybe items into active work, and \
+move_task_to_next_up to prioritize a task for immediate action.
+
 You have a structured people database. When the user mentions facts about a person (birthday, \
 relationship, address, phone, email), use the people tools to store or retrieve that info. For \
 questions like "what's Mike's birthday?" always check the people database first with get_person.
@@ -92,6 +101,15 @@ You can create, list, and delete scheduled tasks using the scheduler tools. If t
 do something on a recurring basis, use create_scheduled_task. For timers and reminders ("set a timer \
 for 10 minutes", "remind me at 3pm to leave"), use the set_reminder tool instead — it handles \
 relative delays and specific times automatically.
+
+You have a comprehensive task management system for tracking todos and projects. When the user asks you to \
+remember a task, create a todo, or mentions something they need to do, use create_task to save it. Use \
+list_tasks to show their tasks filtered by status or project, complete_task when they finish something, \
+and what_should_i_do_now to give smart recommendations on what to work on based on deadlines, priority, \
+and current context. Tasks can be organized into projects, tagged with energy levels, deferred until \
+later dates, and promoted from a long-term backlog into active work. Use defer_task to hide a task \
+until a specific date, promote_task_from_backlog to bring someday/maybe items into active work, and \
+move_task_to_next_up to prioritize a task for immediate action.
 
 You have a structured people database. When the user mentions facts about a person (birthday, \
 relationship, address, phone, email), use the people tools to store or retrieve that info. For \
@@ -202,4 +220,36 @@ Respond with JSON ONLY:
   "phone": "string or empty",
   "email": "string or empty",
   "notes": "string or empty"
+}"""
+
+TASK_EXTRACTION_PROMPT = """You are a task data extractor. Given a statement about something \
+the user needs to do, extract the following fields into JSON.
+
+Fields:
+- title: Clear, actionable task title (required — verb + object, e.g., "Update Skippy docs")
+- description: Additional context or notes from the original statement
+- priority: Inferred urgency (0=none, 1=low, 2=medium, 3=high, 4=urgent)
+- due_date: If a deadline is mentioned, extract as ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)
+- project: Inferred project/category (e.g., "work", "home", "skippy", "personal")
+- is_backlog: True if this is a long-term "someday/maybe" item, False if actionable soon
+
+Prioritization guidelines:
+- urgent (4): explicit urgency ("ASAP", "urgent", "critical")
+- high (3): deadlines within a week or clearly important
+- medium (2): normal tasks (default)
+- low (1): nice-to-have or optional
+- none (0): informational or unclear
+
+Backlog detection:
+- is_backlog=True if: "someday", "maybe", "eventually", "would be nice", "long-term"
+- is_backlog=False if: specific deadline, near-term action, or explicit intent to do soon
+
+Respond with JSON ONLY:
+{
+  "title": "string or empty",
+  "description": "string or empty",
+  "priority": 0-4,
+  "due_date": "string or empty",
+  "project": "string or empty",
+  "is_backlog": true/false
 }"""

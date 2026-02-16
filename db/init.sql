@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS people (
     phone TEXT,
     email TEXT,
     notes TEXT,
-    importance_score FLOAT DEFAULT 0.0,
+    importance_score FLOAT DEFAULT 25,
     last_mentioned TIMESTAMPTZ,
     mention_count INT DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
