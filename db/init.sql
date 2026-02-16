@@ -55,35 +55,6 @@ CREATE INDEX IF NOT EXISTS idx_people_email ON people (user_id, email)
   WHERE email IS NOT NULL AND email != '';
 CREATE INDEX IF NOT EXISTS idx_people_last_mentioned ON people (user_id, last_mentioned DESC);
 
--- Home Assistant Entities
-CREATE TABLE IF NOT EXISTS ha_entities (
-    entity_id TEXT PRIMARY KEY,
-    domain TEXT NOT NULL,
-    friendly_name TEXT NOT NULL,
-    area TEXT,
-    device_class TEXT,
-    device_id TEXT,
-    aliases JSONB DEFAULT '[]'::jsonb,
-    enabled BOOLEAN DEFAULT TRUE,
-    rules JSONB DEFAULT '{}'::jsonb,
-    notes TEXT,
-    last_seen TIMESTAMPTZ DEFAULT NOW(),
-    user_id TEXT NOT NULL DEFAULT 'nolan',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_ha_entities_domain ON ha_entities(domain);
-CREATE INDEX IF NOT EXISTS idx_ha_entities_enabled ON ha_entities(enabled);
-CREATE INDEX IF NOT EXISTS idx_ha_entities_user ON ha_entities(user_id);
-CREATE INDEX IF NOT EXISTS idx_ha_entities_aliases ON ha_entities USING gin(aliases);
-
-COMMENT ON COLUMN ha_entities.aliases IS 'User-defined aliases for entity matching';
-COMMENT ON COLUMN ha_entities.rules IS 'JSON: {confirmation_required, never_auto_turn_off, allowed_hours: {start, end}, defaults: {brightness, temperature, hvac_mode}, auto_off_minutes}';
-
-ALTER TABLE ha_entities
-ADD COLUMN IF NOT EXISTS device_id TEXT;
-
 -- Scheduled tasks (chat-created and predefined)
 CREATE TABLE IF NOT EXISTS scheduled_tasks (
     task_id TEXT PRIMARY KEY,

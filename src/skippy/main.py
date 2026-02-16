@@ -16,14 +16,11 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from skippy.agent.graph import build_graph
 from skippy.config import settings
 from skippy.db_init import initialize_schema
-from skippy.ha.websocket_client import create_ha_websocket_client
-from skippy.ha.sync import sync_all_ha_data
 from skippy.scheduler import start_scheduler, stop_scheduler
 from skippy.telegram import start_telegram, stop_telegram
 from skippy.web.home import router as home_router
 from skippy.web.memories import router as memories_router
 from skippy.web.people import router as people_router
-from skippy.web.ha_entities import router as ha_entities_router
 from skippy.web.tasks import router as tasks_router
 
 logger = logging.getLogger("skippy")
@@ -107,23 +104,11 @@ async def lifespan(app: FastAPI):
         await checkpointer.setup()
         app.state.graph = await build_graph(checkpointer)
         logger.info("Skippy agent ready")
-        # Initialize Home Assistant WebSocket client
-        app.state.ha_ws = await create_ha_websocket_client()
-        logger.info("HA WebSocket client initialized")
         await start_scheduler(app)
-        # Sync HA entities on startup
-        from skippy.tools.ha_entity_sync import sync_ha_entities_to_db
-        asyncio.create_task(sync_ha_entities_to_db())
-        # Sync HA areas and devices on startup
-        asyncio.create_task(sync_all_ha_data(app.state.ha_ws))
         await start_telegram(app)
         yield
         await stop_telegram(app)
         await stop_scheduler(app)
-        # Disconnect HA WebSocket
-        if hasattr(app.state, "ha_ws") and app.state.ha_ws:
-            await app.state.ha_ws.disconnect()
-            logger.info("HA WebSocket client disconnected")
     # Shutdown
     await app.state.pool.close()
 
@@ -132,7 +117,6 @@ app = FastAPI(title="Skippy", version="2.0.0", lifespan=lifespan)
 app.include_router(home_router)
 app.include_router(memories_router)
 app.include_router(people_router)
-app.include_router(ha_entities_router)
 app.include_router(tasks_router)
 
 

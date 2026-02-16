@@ -48,17 +48,6 @@ async def get_dashboard_stats():
                 )
                 important_people = (await cur.fetchone())[0]
 
-                # Get HA entity stats
-                await cur.execute(
-                    "SELECT COUNT(*) FROM ha_entities WHERE user_id = 'nolan'"
-                )
-                total_entities = (await cur.fetchone())[0]
-
-                await cur.execute(
-                    "SELECT COUNT(*) FROM ha_entities WHERE user_id = 'nolan' AND enabled = true"
-                )
-                enabled_entities = (await cur.fetchone())[0]
-
                 # Get task stats
                 await cur.execute(
                     "SELECT COUNT(*) FROM tasks WHERE user_id = 'nolan' AND status NOT IN ('done', 'archived')"
@@ -73,7 +62,6 @@ async def get_dashboard_stats():
                 return {
                     "memories": {"total": total_memories, "recent": recent_memories},
                     "people": {"total": total_people, "important": important_people},
-                    "ha_entities": {"total": total_entities, "enabled": enabled_entities},
                     "tasks": {"total": total_tasks, "due_today": due_today_tasks},
                 }
     except Exception:
@@ -81,7 +69,6 @@ async def get_dashboard_stats():
         return {
             "memories": {"total": 0, "recent": 0},
             "people": {"total": 0, "important": 0},
-            "ha_entities": {"total": 0, "enabled": 0},
         }
 
 
@@ -232,13 +219,6 @@ async def get_system_health():
                 db_size_bytes = (await cur.fetchone())[0]
                 db_size_mb = round(db_size_bytes / (1024 * 1024), 2)
 
-                # Last HA sync time
-                await cur.execute(
-                    "SELECT MAX(last_seen) FROM ha_entities WHERE user_id = 'nolan'"
-                )
-                last_sync = await cur.fetchone()
-                last_sync_time = last_sync[0].isoformat() if last_sync[0] else None
-
                 # Memory stats
                 await cur.execute(
                     "SELECT COUNT(*), AVG(confidence_score) FROM semantic_memories WHERE user_id = 'nolan' AND status = 'active'"
@@ -254,14 +234,6 @@ async def get_system_health():
                 people_row = await cur.fetchone()
                 people_count = people_row[0]
                 avg_importance = round(people_row[1] or 0, 1)
-
-                # HA entities stats
-                await cur.execute(
-                    "SELECT COUNT(*), COUNT(*) FILTER (WHERE enabled = true) FROM ha_entities WHERE user_id = 'nolan'"
-                )
-                entity_row = await cur.fetchone()
-                total_entities = entity_row[0]
-                enabled_entities = entity_row[1]
 
                 # Determine overall status
                 status = "healthy"
@@ -357,28 +329,6 @@ async def global_search(data: dict = Body(...)):
                         "subtitle": row[2] or "No relationship",
                         "relevance": (row[3] or 0) / 100,
                         "link": "/people"
-                    })
-
-                # Search HA entities
-                await cur.execute(
-                    """
-                    SELECT entity_id, friendly_name, domain, area
-                    FROM ha_entities
-                    WHERE user_id = 'nolan'
-                      AND (entity_id ILIKE %s OR friendly_name ILIKE %s OR area ILIKE %s)
-                    ORDER BY friendly_name
-                    LIMIT 5
-                    """,
-                    (pattern, pattern, pattern),
-                )
-                for row in await cur.fetchall():
-                    results.append({
-                        "type": "entity",
-                        "id": row[0],
-                        "title": row[1] or row[0],
-                        "subtitle": f"{row[2]} • {row[3] or 'No area'}",
-                        "relevance": 0.5,
-                        "link": "/entities"
                     })
 
         # Sort by relevance
@@ -1685,7 +1635,6 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                     <option value="/">Dashboard</option>
                     <option value="/memories">Memories</option>
                     <option value="/people">People</option>
-                    <option value="/entities">HA Entities</option>
                 </select>
                 <label>Auto-Refresh Interval (seconds)</label>
                 <input type="number" id="pref-refresh-interval" min="10" max="300" step="10">
@@ -1717,9 +1666,6 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
             </button>
             <button class="action-btn action-btn-accent" onclick="openAddTaskModal()">
                 <span>✓</span> Add Task
-            </button>
-            <button class="action-btn action-btn-accent" onclick="syncEntitiesNow()">
-                <span>🔄</span> Sync HA
             </button>
         </div>
 
@@ -1756,23 +1702,6 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                     </div>
                 </div>
                 <div class="card-button">View People →</div>
-            </a>
-
-            <a href="/entities" class="card entities">
-                <div class="card-icon">🏠</div>
-                <h2>Home Assistant</h2>
-                <p>Device management & natural language control</p>
-                <div class="card-stats">
-                    <div class="stat">
-                        <span class="stat-label">Total Entities</span>
-                        <span class="stat-value" id="entities-total">-</span>
-                    </div>
-                    <div class="stat">
-                        <span class="stat-label">Enabled</span>
-                        <span class="stat-value" id="entities-enabled">-</span>
-                    </div>
-                </div>
-                <div class="card-button">View Entities →</div>
             </a>
 
             <a href="/tasks" class="card tasks">
@@ -1875,8 +1804,6 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                 document.getElementById('memories-recent').textContent = data.memories.recent;
                 document.getElementById('people-total').textContent = data.people.total;
                 document.getElementById('people-important').textContent = data.people.important;
-                document.getElementById('entities-total').textContent = data.ha_entities.total;
-                document.getElementById('entities-enabled').textContent = data.ha_entities.enabled;
                 if (data.tasks) {
                     document.getElementById('tasks-total').textContent = data.tasks.total;
                     document.getElementById('tasks-due-today').textContent = data.tasks.due_today;
@@ -2042,20 +1969,6 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                 }
             } catch (error) {
                 alert('Failed to add person: ' + error);
-            }
-        }
-
-        async function syncEntitiesNow() {
-            if (!confirm('Sync all entities from Home Assistant?')) return;
-
-            try {
-                const response = await fetch('/api/ha_entities/sync', { method: 'POST' });
-                const result = await response.json();
-                alert(`Synced ${result.synced} entities, disabled ${result.disabled}`);
-                loadStats();
-                loadRecentActivity();
-            } catch (error) {
-                alert('Sync failed: ' + error);
             }
         }
 

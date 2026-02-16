@@ -136,12 +136,6 @@ DIRECT_ROUTINES = [
         "trigger": CronTrigger(hour=2, minute=0, timezone=settings.timezone),
     },
     {
-        "task_id": "ha-entities-sync",
-        "name": "Home Assistant Entities Sync",
-        "func": "skippy.tools.ha_entity_sync:sync_ha_entities_to_db",
-        "trigger": CronTrigger(hour=4, minute=0, timezone=settings.timezone),
-    },
-    {
         "task_id": "recalc-people-importance",
         "name": "Recalculate People Importance",
         "func": "skippy.scheduler.routines:recalculate_people_importance",
