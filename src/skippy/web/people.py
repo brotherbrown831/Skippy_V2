@@ -23,12 +23,15 @@ async def get_people():
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    SELECT person_id, canonical_name, aliases, relationship, birthday,
-                           address, phone, email, notes, importance_score,
-                           last_mentioned, mention_count, created_at, updated_at
-                    FROM people
-                    WHERE user_id = %s
-                    ORDER BY canonical_name;
+                    SELECT p.person_id, p.canonical_name, p.aliases, p.relationship, p.birthday,
+                           p.address, p.phone, p.email, p.notes, p.importance_score,
+                           p.last_mentioned, p.mention_count, p.created_at, p.updated_at,
+                           COUNT(m.memory_id) AS memory_count
+                    FROM people p
+                    LEFT JOIN semantic_memories m ON p.person_id = m.person_id AND m.status = 'active'
+                    WHERE p.user_id = %s
+                    GROUP BY p.person_id
+                    ORDER BY p.canonical_name;
                     """,
                     ("nolan",),
                 )
@@ -250,13 +253,14 @@ PEOPLE_PAGE_HTML = """<!DOCTYPE html>
                     <th>Relationship</th>
                     <th>Phone</th>
                     <th>Email</th>
+                    <th>Memories</th>
                     <th>Importance</th>
                     <th>Last Mentioned</th>
                     <th>Actions</th>
                 </tr>
             </thead>
             <tbody id="people-body">
-                <tr><td colspan="7" class="empty">Loading...</td></tr>
+                <tr><td colspan="8" class="empty">Loading...</td></tr>
             </tbody>
         </table>
     </div>
@@ -284,7 +288,7 @@ PEOPLE_PAGE_HTML = """<!DOCTYPE html>
                 const importantSection = document.getElementById('important-section');
 
                 if (people.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7" class="empty">No people found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="8" class="empty">No people found</td></tr>';
                     return;
                 }
 
@@ -316,6 +320,7 @@ PEOPLE_PAGE_HTML = """<!DOCTYPE html>
                         <td>${p.relationship || '-'}</td>
                         <td>${p.phone || '-'}</td>
                         <td>${p.email || '-'}</td>
+                        <td>${p.memory_count || 0} facts</td>
                         <td>${Math.round(p.importance_score || 0)}</td>
                         <td>${formatDate(p.last_mentioned)}</td>
                         <td><button class="delete-btn" onclick="deletePerson(${p.person_id})">Delete</button></td>
@@ -323,7 +328,7 @@ PEOPLE_PAGE_HTML = """<!DOCTYPE html>
                 `).join('');
             } catch (error) {
                 console.error('Error loading people:', error);
-                document.getElementById('people-body').innerHTML = '<tr><td colspan="7" class="empty">Error loading people</td></tr>';
+                document.getElementById('people-body').innerHTML = '<tr><td colspan="8" class="empty">Error loading people</td></tr>';
             }
         }
 

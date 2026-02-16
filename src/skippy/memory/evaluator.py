@@ -130,15 +130,23 @@ async def evaluate_and_store(
                         continue  # Move to next fact
 
                 # Step 4b: Store as a new memory
+                # Try to resolve person_id if this is a person/family memory
+                person_id_for_memory = None
+                if category in ("person", "family"):
+                    try:
+                        person_id_for_memory = await _extract_person_id_from_content(extracted_fact, user_id)
+                    except Exception:
+                        logger.debug("Could not link memory to person: %s", extracted_fact[:50])
+
                 await cur.execute(
                     """
                     INSERT INTO semantic_memories
                         (user_id, content, embedding, confidence_score, status,
-                         created_from_conversation_id, category)
-                    VALUES (%s, %s, (%s)::vector, %s, 'active', %s, %s)
+                         created_from_conversation_id, category, person_id)
+                    VALUES (%s, %s, (%s)::vector, %s, 'active', %s, %s, %s)
                     RETURNING memory_id, content;
                     """,
-                    (user_id, extracted_fact, embedding_str, confidence, conversation_id, category),
+                    (user_id, extracted_fact, embedding_str, confidence, conversation_id, category, person_id_for_memory),
                 )
                 result = await cur.fetchone()
                 logger.info("New memory stored: id=%s content='%s'", result[0], result[1][:50])
@@ -327,12 +335,131 @@ async def _extract_and_store_person(
                             user_id=user_id,
                         )
 
-        # Step 3: Update importance
+        # Step 4: Link any existing unlinked memories about this person
         if person_id:
-            await _update_person_importance(person_id)
+            try:
+                await _link_existing_memories_to_person(person_id, data.get("name", ""), user_id)
+            except Exception:
+                logger.exception("Failed to link existing memories to person %d", person_id)
 
     except Exception:
         logger.exception("Failed to upsert auto-extracted person")
+
+
+async def _extract_person_id_from_content(content: str, user_id: str) -> int | None:
+    """Extract person name from memory content and resolve to person_id.
+
+    Uses regex patterns to extract name, then fuzzy matching to find person.
+    Only returns person_id if high confidence (>=85%).
+
+    Args:
+        content: Memory content (e.g., "Summer enjoys crafting.")
+        user_id: User ID
+
+    Returns:
+        person_id if high-confidence match found, None otherwise
+    """
+    import re
+    from skippy.tools.people import _resolve_person_identity
+
+    # Heuristic: Extract first capitalized name before common verbs/patterns
+    # Matches: "Summer enjoys..." → "Summer"
+    #          "Harper's birthday..." → "Harper"
+    #          "Jenny Spaldin is..." → "Jenny Spaldin"
+    patterns = [
+        r'^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(?:is|has|lives|works|goes|likes|dislikes|enjoys|prefers)',
+        r'^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\'s\s+',  # Possessive form
+        r'^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(?:born|married|knows|met)',
+    ]
+
+    extracted_name = None
+    for pattern in patterns:
+        match = re.match(pattern, content)
+        if match:
+            extracted_name = match.group(1)
+            break
+
+    if not extracted_name:
+        return None
+
+    # Try to resolve to existing person
+    try:
+        identity = await _resolve_person_identity(extracted_name, user_id, threshold=85)
+        if not identity["suggestion"]:  # Only use high-confidence matches
+            logger.debug(
+                "Linked memory to person: '%s' → %s (%.0f%%)",
+                extracted_name, identity["canonical_name"], identity["confidence"]
+            )
+            return identity["person_id"]
+    except ValueError:
+        # No match found
+        pass
+
+    return None
+
+
+async def _link_existing_memories_to_person(
+    person_id: int,
+    canonical_name: str,
+    user_id: str,
+) -> int:
+    """Link existing unlinked person/family memories to this person.
+
+    Searches for memories that mention this person's name (or aliases)
+    and links them via person_id.
+
+    Returns:
+        Number of memories linked
+    """
+    async with await psycopg.AsyncConnection.connect(
+        settings.database_url, autocommit=True
+    ) as conn:
+        async with conn.cursor() as cur:
+            # Get person's aliases
+            await cur.execute(
+                "SELECT canonical_name, aliases FROM people WHERE person_id = %s",
+                (person_id,)
+            )
+            row = await cur.fetchone()
+            if not row:
+                return 0
+
+            canonical, aliases = row
+            search_names = [canonical]
+            if aliases:
+                search_names.extend(aliases)
+
+            # Find unlinked memories that mention this person
+            # Build LIKE conditions for each name variant
+            conditions = []
+            params = [person_id, user_id]
+            for name in search_names:
+                conditions.append("(content ILIKE %s OR content ILIKE %s)")
+                params.extend([f"{name} %", f"{name}'s %"])
+
+            where_clause = " OR ".join(conditions)
+
+            await cur.execute(
+                f"""
+                UPDATE semantic_memories
+                SET person_id = %s
+                WHERE user_id = %s
+                  AND category IN ('person', 'family')
+                  AND person_id IS NULL
+                  AND status = 'active'
+                  AND ({where_clause})
+                RETURNING memory_id
+                """,
+                params
+            )
+
+            linked_ids = await cur.fetchall()
+            count = len(linked_ids)
+
+            if count > 0:
+                logger.info("Linked %d existing memories to person %d (%s)", count, person_id, canonical)
+
+            return count
 
 
 async def _evaluate_exchange(

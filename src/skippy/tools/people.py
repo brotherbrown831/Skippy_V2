@@ -808,7 +808,20 @@ async def merge_people(
                 )
                 result = await cur.fetchone()
 
-                # Step 5: Delete duplicate record
+                # Step 5: Migrate all memories from duplicate to primary person
+                await cur.execute(
+                    """
+                    UPDATE semantic_memories
+                    SET person_id = %s
+                    WHERE person_id = %s
+                    """,
+                    (primary_id, dup_id),
+                )
+                memory_count = cur.rowcount
+                if memory_count > 0:
+                    logger.info("Migrated %d memories from person %d to %d during merge", memory_count, dup_id, primary_id)
+
+                # Step 6: Delete duplicate record
                 await cur.execute(
                     "DELETE FROM people WHERE person_id = %s",
                     (dup_id,),
@@ -1192,11 +1205,193 @@ async def search_people_fuzzy(query: str, limit: int = 10) -> str:
         return f"Error searching people: {e}"
 
 
+@tool
+async def get_person_memories(name: str, limit: int = 20) -> str:
+    """Get all memories related to a specific person.
+
+    Use this when the user asks "What do I know about [person]?" or
+    "Tell me everything about [person]".
+
+    Returns structured list of all facts/memories linked to this person.
+
+    Args:
+        name: Person's name (supports fuzzy matching and aliases).
+        limit: Maximum number of memories to return (default: 20).
+    """
+    try:
+        # Step 1: Resolve person identity
+        try:
+            identity = await _resolve_person_identity(name, "nolan")
+            person_id = identity["person_id"]
+            canonical_name = identity["canonical_name"]
+        except ValueError:
+            return f"No one named '{name}' found in the people database."
+
+        # Step 2: Fetch all memories for this person
+        async with await psycopg.AsyncConnection.connect(
+            settings.database_url, autocommit=True
+        ) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT memory_id, content, category, confidence_score,
+                           reinforcement_count, created_at
+                    FROM semantic_memories
+                    WHERE person_id = %s
+                      AND user_id = %s
+                      AND status = 'active'
+                    ORDER BY
+                        CASE
+                            WHEN category = 'person' THEN 1
+                            WHEN category = 'family' THEN 2
+                            ELSE 3
+                        END,
+                        confidence_score DESC,
+                        created_at DESC
+                    LIMIT %s
+                    """,
+                    (person_id, "nolan", limit),
+                )
+                rows = await cur.fetchall()
+
+                if not rows:
+                    return f"No memories found for {canonical_name}."
+
+                # Format response
+                lines = [f"Memories about {canonical_name} ({len(rows)} total):"]
+                lines.append("")
+
+                for mem_id, content, category, confidence, reinforcements, created in rows:
+                    # Add category emoji
+                    emoji = "👤" if category == "person" else "👨‍👩‍👧‍👦" if category == "family" else "📝"
+
+                    # Build memory line
+                    parts = [f"{emoji} {content}"]
+
+                    # Add metadata if notable
+                    meta = []
+                    if reinforcements > 0:
+                        meta.append(f"reinforced {reinforcements}x")
+                    if confidence >= 0.8:
+                        meta.append(f"high confidence")
+
+                    if meta:
+                        parts.append(f"({', '.join(meta)})")
+
+                    lines.append(" ".join(parts))
+
+                return "\n".join(lines)
+
+    except Exception as e:
+        logger.error("Failed to get person memories: %s", e)
+        return f"Error retrieving memories: {e}"
+
+
+@tool
+async def link_memory_to_person(memory_id: int, person_name: str) -> str:
+    """Manually link an existing memory to a person.
+
+    Use when a memory should be associated with a person but wasn't
+    automatically linked.
+
+    Args:
+        memory_id: ID of the memory to link.
+        person_name: Name of the person to link to.
+    """
+    try:
+        # Resolve person
+        try:
+            identity = await _resolve_person_identity(person_name, "nolan")
+            person_id = identity["person_id"]
+            canonical_name = identity["canonical_name"]
+        except ValueError:
+            return f"No one named '{person_name}' found."
+
+        # Update memory
+        async with await psycopg.AsyncConnection.connect(
+            settings.database_url, autocommit=True
+        ) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE semantic_memories
+                    SET person_id = %s
+                    WHERE memory_id = %s AND user_id = %s
+                    RETURNING content
+                    """,
+                    (person_id, memory_id, "nolan"),
+                )
+                row = await cur.fetchone()
+
+                if not row:
+                    return f"Memory {memory_id} not found."
+
+                logger.info("Linked memory %d to person %d (%s)", memory_id, person_id, canonical_name)
+                await log_activity(
+                    activity_type="memory_linked",
+                    entity_type="memory",
+                    entity_id=str(memory_id),
+                    description=f"Linked memory to {canonical_name}",
+                    metadata={"person_id": person_id, "content": row[0][:100]},
+                    user_id="nolan",
+                )
+
+                return f"Linked memory to {canonical_name}: {row[0]}"
+
+    except Exception as e:
+        logger.error("Failed to link memory to person: %s", e)
+        return f"Error linking memory: {e}"
+
+
+@tool
+async def unlink_memory_from_person(memory_id: int) -> str:
+    """Remove the person association from a memory.
+
+    Args:
+        memory_id: ID of the memory to unlink.
+    """
+    try:
+        async with await psycopg.AsyncConnection.connect(
+            settings.database_url, autocommit=True
+        ) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE semantic_memories
+                    SET person_id = NULL
+                    WHERE memory_id = %s AND user_id = %s
+                    RETURNING content
+                    """,
+                    (memory_id, "nolan"),
+                )
+                row = await cur.fetchone()
+
+                if not row:
+                    return f"Memory {memory_id} not found."
+
+                logger.info("Unlinked memory %d from person", memory_id)
+                await log_activity(
+                    activity_type="memory_unlinked",
+                    entity_type="memory",
+                    entity_id=str(memory_id),
+                    description="Unlinked memory from person",
+                    metadata={"content": row[0][:100]},
+                    user_id="nolan",
+                )
+
+                return f"Unlinked memory: {row[0]}"
+
+    except Exception as e:
+        logger.error("Failed to unlink memory: %s", e)
+        return f"Error unlinking memory: {e}"
+
+
 def get_tools() -> list:
     """Return people tools — always available."""
     return [
         add_person,
         get_person,
+        get_person_memories,
         search_people,
         search_people_fuzzy,
         update_person,
@@ -1205,4 +1400,6 @@ def get_tools() -> list:
         add_person_alias,
         remove_person_alias,
         find_duplicate_people,
+        link_memory_to_person,
+        unlink_memory_from_person,
     ]
