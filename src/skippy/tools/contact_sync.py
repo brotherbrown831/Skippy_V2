@@ -9,6 +9,7 @@ from langchain_core.tools import tool
 
 from skippy.config import settings
 from skippy.tools.google_auth import get_google_user_service
+from skippy.utils.activity_logger import log_activity
 
 logger = logging.getLogger("skippy")
 
@@ -315,6 +316,20 @@ async def sync_google_contacts_to_people() -> dict:
                 "  - '%s' (~= '%s' at %.0f%%)",
                 s["google_name"], s["existing_person"], s["confidence"]
             )
+
+    await log_activity(
+        activity_type="contacts_synced",
+        entity_type="system",
+        entity_id="google_contacts",
+        description=f"Synced {stats['synced']} contacts from Google",
+        metadata={
+            "synced": stats['synced'],
+            "skipped": stats['skipped'],
+            "errors": stats['errors'],
+            "auto_merged": stats['auto_merged'],
+        },
+        user_id="nolan",
+    )
 
     return stats
 

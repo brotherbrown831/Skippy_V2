@@ -6,6 +6,7 @@ import psycopg
 
 from skippy.agent.prompts import MEMORY_EVALUATION_PROMPT, PERSON_EXTRACTION_PROMPT
 from skippy.config import settings
+from skippy.utils.activity_logger import log_activity
 
 logger = logging.getLogger("skippy")
 
@@ -118,6 +119,14 @@ async def evaluate_and_store(
                             result[2],
                             result[1][:50],
                         )
+                        await log_activity(
+                            activity_type="memory_reinforced",
+                            entity_type="memory",
+                            entity_id=str(result[0]),
+                            description=f"Reinforced memory: {result[1][:50]}...",
+                            metadata={"reinforcement_count": result[2], "category": category},
+                            user_id=user_id,
+                        )
                         continue  # Move to next fact
 
                 # Step 4b: Store as a new memory
@@ -133,6 +142,14 @@ async def evaluate_and_store(
                 )
                 result = await cur.fetchone()
                 logger.info("New memory stored: id=%s content='%s'", result[0], result[1][:50])
+                await log_activity(
+                    activity_type="memory_created",
+                    entity_type="memory",
+                    entity_id=str(result[0]),
+                    description=f"Added memory: {result[1][:50]}..." if len(result[1]) > 50 else f"Added memory: {result[1]}",
+                    metadata={"category": category, "confidence": confidence},
+                    user_id=user_id,
+                )
 
         # Step 5: If person/family category, also upsert into structured people table
         if category in ("person", "family"):
@@ -264,6 +281,14 @@ async def _extract_and_store_person(
                                 "Auto-extracted: updated person id=%s name='%s'",
                                 row[0], row[1]
                             )
+                            await log_activity(
+                                activity_type="person_updated",
+                                entity_type="person",
+                                entity_id=str(row[0]),
+                                description=f"Updated person: {row[1]}",
+                                metadata={"source": "auto_extraction"},
+                                user_id=user_id,
+                            )
 
                 else:
                     # Create new person
@@ -292,6 +317,14 @@ async def _extract_and_store_person(
                         logger.info(
                             "Auto-extracted: created person id=%s name='%s'",
                             row[0], row[1]
+                        )
+                        await log_activity(
+                            activity_type="person_created",
+                            entity_type="person",
+                            entity_id=str(row[0]),
+                            description=f"Added person: {row[1]}",
+                            metadata={"source": "auto_extraction", "relationship": fields.get("relationship")},
+                            user_id=user_id,
                         )
 
         # Step 3: Update importance

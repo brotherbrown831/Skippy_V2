@@ -21,6 +21,7 @@ import psycopg
 from langchain_core.tools import tool
 
 from skippy.config import settings
+from skippy.utils.activity_logger import log_activity
 
 logger = logging.getLogger("skippy")
 
@@ -371,12 +372,304 @@ async def _resolve_entity_id(
 
 
 # ============================================================================
+# New Consolidated Tools (Area/Device/Scene Aware)
+# ============================================================================
+
+
+@tool
+async def control_device(
+    target: str,
+    action: str,
+    parameters: dict | None = None
+) -> str:
+    """Control a Home Assistant device, area, scene, or entity.
+
+    Intelligently resolves the target to a scene, area, device, or entity and performs
+    the requested action. Supports natural language names like "bedroom", "desk lamp", etc.
+
+    Args:
+        target: What to control (area, device, entity, or scene name)
+            - Area: "bedroom", "living room", "kitchen"
+            - Device: "desk lamp", "smart plug", "thermostat"
+            - Entity: "light.officesw", "switch.bedroom_fan"
+            - Scene: "movie time", "bedtime"
+        action: What to do (service name)
+            - "turn_on", "turn_off" - Basic on/off
+            - "toggle" - Switch state
+            - "open", "close" - Covers/doors
+            - "lock", "unlock" - Locks
+            - "set_temperature" - Climate
+            - "set_brightness" - Lights
+        parameters: Additional service data as dict
+            - {"brightness": 50} for lights
+            - {"temperature": 72} for climate
+            - {"position": 75} for covers
+
+    Examples:
+        - control_device(target="bedroom", action="turn_off")
+        - control_device(target="desk lamp", action="turn_on", parameters={"brightness": 50})
+        - control_device(target="movie time", action="turn_on")
+    """
+    from skippy.ha.resolver import resolve_target
+
+    try:
+        # Resolve target to scene/area/device/entity
+        result = await resolve_target(target)
+
+        if result.get("error"):
+            return f"Error: {result['error']}"
+
+        if result.get("suggestion"):
+            return f"Did you mean '{result.get('matched_name')}'? Please confirm."
+
+        target_type = result.get("target_type")
+        target_dict = result.get("target_dict", {})
+
+        # For scenes, always use scene.turn_on
+        if target_type == "scene":
+            # Get the actual entity_id from resolver
+            entity_id = result.get("target_id")
+            service_data = parameters or {}
+            result_resp = _call_ha_service("scene", "turn_on", entity_id, **service_data)
+            if result_resp["success"]:
+                return f"Activated scene '{result.get('matched_name')}'"
+            else:
+                return f"Failed to activate scene: {result_resp.get('error')}"
+
+        # For other targets, use WebSocket for area/device support
+        from fastapi import FastAPI
+        try:
+            app = FastAPI()
+            if hasattr(app.state, "ha_ws") and app.state.ha_ws:
+                # Use WebSocket for area/device targeting
+                domain_map = {
+                    "turn_on": "light",  # Default to light, but will work for any domain
+                    "turn_off": "light",
+                    "toggle": "light",
+                    "lock": "lock",
+                    "unlock": "lock",
+                    "open": "cover",
+                    "close": "cover",
+                    "set_brightness": "light",
+                    "set_temperature": "climate",
+                    "set_cover_position": "cover",
+                }
+                domain = domain_map.get(action, "homeassistant")
+
+                ws_result = await app.state.ha_ws.call_service(
+                    domain=domain,
+                    service=action,
+                    target=target_dict,
+                    service_data=parameters or {},
+                )
+
+                if ws_result.get("success"):
+                    return f"Action '{action}' completed on {result.get('matched_name')}"
+                else:
+                    return f"Action failed: {ws_result.get('error', 'Unknown error')}"
+        except Exception:
+            pass
+
+        # Fallback to REST if WebSocket not available
+        # For entities, use REST
+        if target_type == "entity":
+            entity_id = result.get("target_id")
+            # Infer domain from entity_id
+            if ":" in entity_id:
+                domain = entity_id.split(":")[0]
+            else:
+                domain = entity_id.split(".")[0]
+
+            rest_result = _call_ha_service(domain, action, entity_id, **(parameters or {}))
+            if rest_result["success"]:
+                return f"Action '{action}' completed on {result.get('matched_name')}"
+            else:
+                return f"Action failed: {rest_result.get('error')}"
+
+        return "Unable to execute action - target type not supported"
+
+    except Exception as e:
+        logger.error(f"Error in control_device: {e}")
+        return f"Error: {str(e)}"
+
+
+@tool
+async def activate_scene(scene_name: str) -> str:
+    """Activate a Home Assistant scene.
+
+    Scenes are pre-configured sets of entity states that can be activated with a single
+    command. Examples: "movie time", "bedtime", "good morning".
+
+    Args:
+        scene_name: Name of the scene to activate (e.g., "movie time", "good morning")
+
+    Examples:
+        - activate_scene(scene_name="movie time")
+        - activate_scene(scene_name="bedtime")
+    """
+    from skippy.ha.resolver import resolve_target
+
+    try:
+        # Resolve to a scene specifically
+        result = await resolve_target(scene_name)
+
+        if result.get("error"):
+            return f"Error: {result['error']}"
+
+        if result.get("target_type") != "scene":
+            return f"'{scene_name}' doesn't match a known scene"
+
+        if result.get("suggestion"):
+            return f"Did you mean '{result.get('matched_name')}'? Please confirm."
+
+        entity_id = result.get("target_id")
+
+        # Call scene.turn_on
+        response = _call_ha_service("scene", "turn_on", entity_id)
+        if response["success"]:
+            msg = f"Activated scene '{result.get('matched_name')}'"
+            await log_activity(
+                activity_type="scene_activated",
+                entity_type="entity",
+                entity_id=entity_id,
+                description=msg,
+                metadata={"scene_name": result.get('matched_name')},
+                user_id="nolan",
+            )
+            return msg
+        else:
+            return f"Failed to activate scene: {response.get('error')}"
+
+    except Exception as e:
+        logger.error(f"Error activating scene: {e}")
+        return f"Error: {str(e)}"
+
+
+@tool
+async def get_state(target: str) -> str:
+    """Get the state of a Home Assistant entity, area, or device.
+
+    Retrieves current state information for the specified target. For areas and devices,
+    aggregates states of all entities in that area/device.
+
+    Args:
+        target: What to check
+            - Area: "bedroom", "living room"
+            - Device: "desk lamp", "thermostat"
+            - Entity: "light.kitchen", "sensor.temperature"
+
+    Examples:
+        - get_state(target="bedroom") - Check if bedroom lights are on/off
+        - get_state(target="temperature sensor")
+        - get_state(target="light.living_room")
+    """
+    from skippy.ha.resolver import resolve_target
+
+    try:
+        # Resolve target
+        result = await resolve_target(target)
+
+        if result.get("error"):
+            return f"Error: {result['error']}"
+
+        if result.get("suggestion"):
+            return f"Did you mean '{result.get('matched_name')}'? Please confirm."
+
+        target_type = result.get("target_type")
+        target_id = result.get("target_id")
+
+        if target_type == "entity":
+            # Get state of a single entity
+            ha_result = _get_ha_state(target_id)
+            if ha_result["success"]:
+                state = ha_result["data"].get("state", "unknown")
+                attributes = ha_result["data"].get("attributes", {})
+                friendly_name = attributes.get("friendly_name", target_id)
+                return f"{friendly_name} is {state}"
+            else:
+                return f"Unable to get state: {ha_result.get('error')}"
+
+        elif target_type == "area":
+            # Get aggregated state for area
+            try:
+                async with await psycopg.AsyncConnection.connect(settings.database_url) as conn:
+                    cursor = await conn.execute(
+                        """
+                        SELECT entity_id, friendly_name FROM ha_entities
+                        WHERE area_id = %s AND enabled = true
+                        LIMIT 20
+                        """,
+                        (target_id,),
+                    )
+                    entities = await cursor.fetchall()
+
+                    if not entities:
+                        return f"No entities found in area '{result.get('matched_name')}'"
+
+                    # Fetch states for all entities in area
+                    states_summary = {}
+                    for entity_id, friendly_name in entities:
+                        state_result = _get_ha_state(entity_id)
+                        if state_result["success"]:
+                            state = state_result["data"].get("state", "unknown")
+                            domain = entity_id.split(".")[0]
+                            if domain not in states_summary:
+                                states_summary[domain] = []
+                            states_summary[domain].append(f"{friendly_name}:{state}")
+
+                    # Format summary
+                    summary = f"State of '{result.get('matched_name')}':\n"
+                    for domain, entries in states_summary.items():
+                        summary += f"  {domain.title()}: {', '.join(entries)}\n"
+                    return summary.strip()
+            except Exception as e:
+                logger.error(f"Error getting area state: {e}")
+                return f"Error getting area state: {e}"
+
+        elif target_type == "device":
+            # Get aggregated state for device
+            try:
+                async with await psycopg.AsyncConnection.connect(settings.database_url) as conn:
+                    cursor = await conn.execute(
+                        """
+                        SELECT unnest(entity_ids) as entity_id FROM ha_devices
+                        WHERE device_id = %s
+                        """,
+                        (target_id,),
+                    )
+                    entity_ids = await cursor.fetchall()
+
+                    if not entity_ids:
+                        return f"No entities found for device '{result.get('matched_name')}'"
+
+                    # Fetch states
+                    states = []
+                    for (entity_id,) in entity_ids:
+                        if entity_id:
+                            state_result = _get_ha_state(entity_id)
+                            if state_result["success"]:
+                                state = state_result["data"].get("state", "unknown")
+                                states.append(f"{entity_id}:{state}")
+
+                    return f"State of '{result.get('matched_name')}': {', '.join(states)}"
+            except Exception as e:
+                logger.error(f"Error getting device state: {e}")
+                return f"Error getting device state: {e}"
+
+        return f"Unable to get state for {target_type}"
+
+    except Exception as e:
+        logger.error(f"Error in get_state: {e}")
+        return f"Error: {str(e)}"
+
+
+# ============================================================================
 # Notification Tools
 # ============================================================================
 
 
 @tool
-def send_notification(message: str, title: str = "Skippy") -> str:
+async def send_notification(message: str, title: str = "Skippy") -> str:
     """Send a push notification to the user's phone. Use this when you need to
     alert the user about something important, deliver a reminder, or when they
     explicitly ask you to send them a notification.
@@ -397,7 +690,16 @@ def send_notification(message: str, title: str = "Skippy") -> str:
         response.raise_for_status()
 
         logger.info("Notification sent: title='%s', message='%s'", title, message)
-        return f"Notification sent successfully: '{title} - {message}'"
+        msg = f"Notification sent successfully: '{title} - {message}'"
+        await log_activity(
+            activity_type="notification_sent",
+            entity_type="system",
+            entity_id="notification",
+            description=f"Sent notification: {title}",
+            metadata={"title": title, "message": message},
+            user_id="nolan",
+        )
+        return msg
     except httpx.HTTPStatusError as e:
         logger.error("HA notification failed (HTTP %s): %s", e.response.status_code, e)
         return f"Failed to send notification (HTTP {e.response.status_code}): {e}"
@@ -407,7 +709,7 @@ def send_notification(message: str, title: str = "Skippy") -> str:
 
 
 @tool
-def send_sms(message: str) -> str:
+async def send_sms(message: str) -> str:
     """Send an SMS text message to the user's phone via Twilio. Use this for
     important or urgent messages, or when push notifications aren't reliable.
     Prefer send_notification for routine alerts and send_sms for higher-priority items.
@@ -426,7 +728,16 @@ def send_sms(message: str) -> str:
         )
 
         logger.info("SMS sent: sid=%s to=%s", sms.sid, settings.twilio_to_number)
-        return f"SMS sent successfully to {settings.twilio_to_number}: '{message}'"
+        msg = f"SMS sent successfully to {settings.twilio_to_number}: '{message}'"
+        await log_activity(
+            activity_type="sms_sent",
+            entity_type="system",
+            entity_id="sms",
+            description=f"Sent SMS message",
+            metadata={"to": settings.twilio_to_number, "message": message},
+            user_id="nolan",
+        )
+        return msg
     except Exception as e:
         logger.error("SMS failed: %s", e)
         return f"Failed to send SMS: {e}"
@@ -587,6 +898,14 @@ async def turn_on_light(
             msg += f" at {brightness}%"
         if color:
             msg += f" ({color})"
+        await log_activity(
+            activity_type="light_turned_on",
+            entity_type="entity",
+            entity_id=entity_id,
+            description=msg,
+            metadata={"brightness": brightness, "color": color},
+            user_id="nolan",
+        )
         return msg
     else:
         return f"Failed to turn on light: {result['error']}"
@@ -614,7 +933,16 @@ async def turn_off_light(entity_id: str) -> str:
     result = _call_ha_service("light", "turn_off", entity_id)
 
     if result["success"]:
-        return f"Turned off {entity_id}"
+        msg = f"Turned off {entity_id}"
+        await log_activity(
+            activity_type="light_turned_off",
+            entity_type="entity",
+            entity_id=entity_id,
+            description=msg,
+            metadata={},
+            user_id="nolan",
+        )
+        return msg
     else:
         return f"Failed to turn off light: {result['error']}"
 
@@ -641,7 +969,19 @@ async def turn_on_switch(entity_id: str) -> str:
         return str(e)
 
     result = _call_ha_service("switch", "turn_on", entity_id)
-    return f"Turned on {entity_id}" if result["success"] else f"Failed: {result['error']}"
+    if result["success"]:
+        msg = f"Turned on {entity_id}"
+        await log_activity(
+            activity_type="switch_turned_on",
+            entity_type="entity",
+            entity_id=entity_id,
+            description=msg,
+            metadata={},
+            user_id="nolan",
+        )
+        return msg
+    else:
+        return f"Failed: {result['error']}"
 
 
 @tool
@@ -661,7 +1001,19 @@ async def turn_off_switch(entity_id: str) -> str:
         return str(e)
 
     result = _call_ha_service("switch", "turn_off", entity_id)
-    return f"Turned off {entity_id}" if result["success"] else f"Failed: {result['error']}"
+    if result["success"]:
+        msg = f"Turned off {entity_id}"
+        await log_activity(
+            activity_type="switch_turned_off",
+            entity_type="entity",
+            entity_id=entity_id,
+            description=msg,
+            metadata={},
+            user_id="nolan",
+        )
+        return msg
+    else:
+        return f"Failed: {result['error']}"
 
 
 # ============================================================================
@@ -712,6 +1064,14 @@ async def set_thermostat(
         else:
             msg += f", but failed to change mode: {mode_result['error']}"
 
+    await log_activity(
+        activity_type="thermostat_set",
+        entity_type="entity",
+        entity_id=entity_id,
+        description=msg,
+        metadata={"temperature": temperature, "mode": mode},
+        user_id="nolan",
+    )
     return msg
 
 
@@ -737,7 +1097,19 @@ async def lock_door(entity_id: str) -> str:
         return str(e)
 
     result = _call_ha_service("lock", "lock", entity_id)
-    return f"Locked {entity_id}" if result["success"] else f"Failed to lock: {result['error']}"
+    if result["success"]:
+        msg = f"Locked {entity_id}"
+        await log_activity(
+            activity_type="door_locked",
+            entity_type="entity",
+            entity_id=entity_id,
+            description=msg,
+            metadata={},
+            user_id="nolan",
+        )
+        return msg
+    else:
+        return f"Failed to lock: {result['error']}"
 
 
 @tool
@@ -757,7 +1129,19 @@ async def unlock_door(entity_id: str) -> str:
         return str(e)
 
     result = _call_ha_service("lock", "unlock", entity_id)
-    return f"Unlocked {entity_id}" if result["success"] else f"Failed to unlock: {result['error']}"
+    if result["success"]:
+        msg = f"Unlocked {entity_id}"
+        await log_activity(
+            activity_type="door_unlocked",
+            entity_type="entity",
+            entity_id=entity_id,
+            description=msg,
+            metadata={},
+            user_id="nolan",
+        )
+        return msg
+    else:
+        return f"Failed to unlock: {result['error']}"
 
 
 # ============================================================================
@@ -782,7 +1166,19 @@ async def open_cover(entity_id: str) -> str:
         return str(e)
 
     result = _call_ha_service("cover", "open_cover", entity_id)
-    return f"Opening {entity_id}" if result["success"] else f"Failed to open: {result['error']}"
+    if result["success"]:
+        msg = f"Opening {entity_id}"
+        await log_activity(
+            activity_type="cover_opened",
+            entity_type="entity",
+            entity_id=entity_id,
+            description=msg,
+            metadata={},
+            user_id="nolan",
+        )
+        return msg
+    else:
+        return f"Failed to open: {result['error']}"
 
 
 @tool
@@ -802,7 +1198,19 @@ async def close_cover(entity_id: str) -> str:
         return str(e)
 
     result = _call_ha_service("cover", "close_cover", entity_id)
-    return f"Closing {entity_id}" if result["success"] else f"Failed to close: {result['error']}"
+    if result["success"]:
+        msg = f"Closing {entity_id}"
+        await log_activity(
+            activity_type="cover_closed",
+            entity_type="entity",
+            entity_id=entity_id,
+            description=msg,
+            metadata={},
+            user_id="nolan",
+        )
+        return msg
+    else:
+        return f"Failed to close: {result['error']}"
 
 
 @tool
@@ -826,7 +1234,19 @@ async def set_cover_position(entity_id: str, position: int) -> str:
         return "Position must be 0-100"
 
     result = _call_ha_service("cover", "set_cover_position", entity_id, position=position)
-    return f"Set {entity_id} to {position}%" if result["success"] else f"Failed: {result['error']}"
+    if result["success"]:
+        msg = f"Set {entity_id} to {position}%"
+        await log_activity(
+            activity_type="cover_position_set",
+            entity_type="entity",
+            entity_id=entity_id,
+            description=msg,
+            metadata={"position": position},
+            user_id="nolan",
+        )
+        return msg
+    else:
+        return f"Failed: {result['error']}"
 
 
 # ============================================================================
@@ -846,22 +1266,27 @@ def get_tools() -> list:
 
     # Add device control tools if HA is configured
     if settings.ha_token and settings.ha_url:
+        # Add new consolidated tools first (higher priority for LLM)
         tools.extend([
-            # Generic
+            # New consolidated tools (area/device/scene aware)
+            control_device,
+            activate_scene,
+            get_state,
+            # Generic (legacy)
             get_entity_state,
             call_service,
-            # Lights
+            # Lights (legacy)
             turn_on_light,
             turn_off_light,
-            # Switches
+            # Switches (legacy)
             turn_on_switch,
             turn_off_switch,
-            # Climate
+            # Climate (legacy)
             set_thermostat,
-            # Locks
+            # Locks (legacy)
             lock_door,
             unlock_door,
-            # Covers
+            # Covers (legacy)
             open_cover,
             close_cover,
             set_cover_position,

@@ -8,6 +8,7 @@ from langchain_core.tools import tool
 
 from skippy.config import settings
 from skippy.tools.home_assistant import _fetch_ha_entities
+from skippy.utils.activity_logger import log_activity
 
 logger = logging.getLogger("skippy")
 
@@ -101,6 +102,20 @@ async def sync_ha_entities_to_db(user_id: str = "nolan") -> dict:
                     logger.info(f"Marked {disabled} missing entities as disabled: {missing_ids}")
 
         logger.info(f"HA entity sync complete: {synced} synced, {disabled} disabled, {errors} errors")
+
+        await log_activity(
+            activity_type="ha_entities_synced",
+            entity_type="system",
+            entity_id="ha_entities",
+            description=f"Synced {synced} Home Assistant entities",
+            metadata={
+                "synced": synced,
+                "disabled": disabled,
+                "errors": errors,
+            },
+            user_id=user_id,
+        )
+
         return {"synced": synced, "disabled": disabled, "errors": errors}
 
     except Exception:

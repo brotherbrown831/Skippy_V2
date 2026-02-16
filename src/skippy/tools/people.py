@@ -11,6 +11,7 @@ from langchain_core.tools import tool
 from rapidfuzz import fuzz, process
 
 from skippy.config import settings
+from skippy.utils.activity_logger import log_activity
 
 logger = logging.getLogger("skippy")
 
@@ -375,6 +376,14 @@ async def add_person(
                         row = await cur.fetchone()
                         if row:
                             logger.info("Updated existing person: id=%s name='%s'", row[0], row[1])
+                            await log_activity(
+                                activity_type="person_updated",
+                                entity_type="person",
+                                entity_id=str(row[0]),
+                                description=f"Updated person: {row[1]}",
+                                metadata={"relationship": relationship},
+                                user_id="nolan",
+                            )
 
         else:
             # Create new person
@@ -400,6 +409,14 @@ async def add_person(
                     if row:
                         person_id = row[0]
                         logger.info("Created new person: id=%s name='%s'", row[0], row[1])
+                        await log_activity(
+                            activity_type="person_created",
+                            entity_type="person",
+                            entity_id=str(row[0]),
+                            description=f"Added person: {row[1]}",
+                            metadata={"relationship": relationship},
+                            user_id="nolan",
+                        )
 
         # Step 3: Update importance
         if person_id:
@@ -622,6 +639,15 @@ async def update_person(
                 # Step 4: Update importance
                 await _update_person_importance(person_id)
 
+                await log_activity(
+                    activity_type="person_updated",
+                    entity_type="person",
+                    entity_id=str(person_id),
+                    description=f"Updated person: {row[0]}",
+                    metadata={"relationship": relationship},
+                    user_id="nolan",
+                )
+
                 return f"Updated {row[0]}'s info."
 
     except Exception as e:
@@ -792,6 +818,14 @@ async def merge_people(
                     "Merged person %d (%s) into %d (%s)",
                     dup_id, dup_name, primary_id, prim_name
                 )
+                await log_activity(
+                    activity_type="people_merged",
+                    entity_type="person",
+                    entity_id=str(primary_id),
+                    description=f"Merged '{dup_name}' into '{result[0]}'",
+                    metadata={"merged_duplicate_id": dup_id, "aliases": merged_aliases},
+                    user_id="nolan",
+                )
 
                 return (
                     f"Merged '{dup_name}' into '{result[0]}'. "
@@ -851,6 +885,14 @@ async def add_person_alias(person_name: str, alias: str) -> str:
                 )
                 result = await cur.fetchone()
                 logger.info("Added alias '%s' for person %d", alias, person_id)
+                await log_activity(
+                    activity_type="person_alias_added",
+                    entity_type="person",
+                    entity_id=str(person_id),
+                    description=f"Added alias '{alias}' for {result[0]}",
+                    metadata={"alias": alias},
+                    user_id="nolan",
+                )
                 return f"Added alias '{alias}' for {result[0]}. Now aliases: {', '.join(aliases)}"
 
     except Exception as e:
@@ -904,6 +946,14 @@ async def remove_person_alias(person_name: str, alias: str) -> str:
                 )
                 result = await cur.fetchone()
                 logger.info("Removed alias '%s' from person %d", alias, person_id)
+                await log_activity(
+                    activity_type="person_alias_removed",
+                    entity_type="person",
+                    entity_id=str(person_id),
+                    description=f"Removed alias '{alias}' from {result[0]}",
+                    metadata={"alias": alias},
+                    user_id="nolan",
+                )
                 if aliases:
                     return f"Removed alias '{alias}' from {result[0]}. Remaining aliases: {', '.join(aliases)}"
                 else:
