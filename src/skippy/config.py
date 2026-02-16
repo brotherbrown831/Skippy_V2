@@ -28,7 +28,7 @@ class Settings(BaseSettings):
 
     # Scheduler
     scheduler_enabled: bool = True
-    calendar_check_interval_minutes: int = 360  # 6 hours
+    calendar_check_interval_minutes: int = 30  # 30 minutes
     morning_briefing_time: str = "07:00"
     evening_summary_time: str = "22:00"
     google_contacts_sync_time: str = "02:00"

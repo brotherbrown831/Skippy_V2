@@ -146,15 +146,10 @@ def _build_predefined_routines() -> list:
             "task_id": "upcoming-event-check",
             "name": "Upcoming Event Reminder",
             "prompt": (
-                "Check if there are any calendar events starting in the next 30 minutes. "
-                "For each upcoming event, check the reminder_acknowledgments table to see if "
-                "a reminder has already been sent and acknowledged. Only send reminders for events that: "
-                "1) Have never been reminded about (no row in reminder_acknowledgments), OR "
-                "2) Were snoozed and the snooze time has passed (status='snoozed' AND snoozed_until < NOW()), OR "
-                "3) Are pending but never acknowledged after 30 minutes (status='pending' AND reminded_at < NOW() - INTERVAL '30 minutes'). "
-                "When sending a reminder, use send_telegram_message_with_reminder_buttons and pass the event_id, "
-                "event_summary, and event_start so a reminder record can be created. "
-                "If there are no events needing reminders, do NOT send a message — just respond with 'No upcoming events.'"
+                "Ping: Check for calendar events in next 30 min. Send Telegram reminders via "
+                "send_telegram_message_with_reminder_buttons for events not in reminder_acknowledgments, "
+                "or with snoozed_until < NOW(), or pending > 30 min. Include event_id, summary, start time. "
+                "Silence if none."
             ),
             "trigger": IntervalTrigger(minutes=settings.calendar_check_interval_minutes),
         }
