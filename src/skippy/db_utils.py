@@ -29,5 +29,5 @@ async def get_db_connection():
                 await cur.execute("SELECT * FROM table")
     """
     pool = get_db_pool()
-    async with await pool.connection() as conn:
+    async with pool.connection() as conn:
         yield conn
