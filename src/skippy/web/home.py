@@ -14,6 +14,96 @@ logger = logging.getLogger("skippy")
 router = APIRouter()
 
 
+# ============================================================================
+# RENDER HELPER FUNCTIONS
+# ============================================================================
+
+def render_stat(label: str, value_id: str) -> str:
+    """Render a single stat row."""
+    return f'''
+                    <div class="stat">
+                        <span class="stat-label">{label}</span>
+                        <span class="stat-value" id="{value_id}">-</span>
+                    </div>'''
+
+
+def render_card(
+    href: str,
+    icon: str,
+    title: str,
+    desc: str,
+    stats_html: str,
+    css_class: str
+) -> str:
+    """Render a dashboard card."""
+    return f'''
+            <a href="{href}" class="card {css_class}">
+                <div class="card-icon">{icon}</div>
+                <h2>{title}</h2>
+                <p>{desc}</p>
+                <div class="card-stats">{stats_html}</div>
+                <div class="card-button">View {title} →</div>
+            </a>'''
+
+
+def render_modal_header(modal_id: str, title: str) -> str:
+    """Render modal header."""
+    return f'''
+            <div class="modal-header">
+                <h3>{title}</h3>
+                <button class="modal-close" onclick="close{modal_id.replace('-', ' ').title().replace(' ', '')}Modal()">×</button>
+            </div>'''
+
+
+def render_form_field(label: str, field_html: str, required: bool = False) -> str:
+    """Render a form field."""
+    required_mark = " *" if required else ""
+    return f'''
+                <label>{label}{required_mark}</label>
+                {field_html}'''
+
+
+def render_modal(
+    modal_id: str,
+    title: str,
+    body_html: str,
+    footer_buttons_html: str = ''
+) -> str:
+    """Render a complete modal dialog."""
+    default_footer = '''
+                <button class="btn btn-ghost" onclick="close{modal_func}Modal()">Cancel</button>
+                <button class="btn btn-primary" onclick="submit{modal_func}()">Confirm</button>'''.format(
+        modal_func=modal_id.replace('-', ' ').title().replace(' ', '')
+    )
+
+    footer = footer_buttons_html or default_footer
+
+    return f'''
+    <div id="{modal_id}" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>{title}</h3>
+                <button class="modal-close" onclick="close{modal_id.replace('-', ' ').title().replace(' ', '')}Modal()">×</button>
+            </div>
+            <div class="modal-body">
+                {body_html}
+            </div>
+            <div class="modal-footer">
+                {footer}
+            </div>
+        </div>
+    </div>'''
+
+
+def render_section(title: str, content_html: str) -> str:
+    """Render a content section."""
+    return f'''
+    <section class="section">
+        <h2 class="section-title">{title}</h2>
+        {content_html}
+    </section>'''
+
+
 @router.get("/", response_class=HTMLResponse)
 async def homepage():
     """Serve the Skippy dashboard homepage."""
@@ -1009,487 +1099,821 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     <title>Skippy Dashboard</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+        /* ============================================================================
+           DESIGN TOKENS
+           ============================================================================ */
+        :root {
+            --bg-main: #0B1020;
+            --bg-secondary: #11162A;
+            --bg-tertiary: #1a1d27;
+            --border-color: #1F2540;
+            --text-main: #E5E7EB;
+            --text-muted: #9CA3AF;
+            --text-faint: #6B7280;
+            --accent-blue: #6366F1;
+            --accent-blue-hover: #4F46E5;
+            --accent-purple: #A855F7;
+            --accent-cyan: #06B6D4;
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 14px;
+            --shadow-sm: 0 2px 4px rgba(0,0,0,0.15);
+            --shadow-md: 0 4px 12px rgba(0,0,0,0.25);
+            --shadow-lg: 0 10px 30px rgba(0,0,0,0.35);
+            --spacing-2: 4px;
+            --spacing-4: 8px;
+            --spacing-6: 12px;
+            --spacing-8: 16px;
+            --spacing-12: 24px;
+            --spacing-16: 32px;
+            --spacing-24: 48px;
+        }
+
+        /* ============================================================================
+           BASE STYLES
+           ============================================================================ */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #0f1117;
-            color: #e0e0e0;
-            padding: 24px;
+            background: var(--bg-main);
+            color: var(--text-main);
+            padding: var(--spacing-12);
             min-height: 100vh;
+            line-height: 1.6;
         }
 
         .container {
-            max-width: 1200px;
+            max-width: 1280px;
             margin: 0 auto;
         }
 
-        /* Health badge */
+        /* ============================================================================
+           HEALTH BADGE
+           ============================================================================ */
         .health-badge {
             position: fixed;
-            top: 20px;
-            right: 20px;
-            background: #1a1d27;
-            border: 1px solid #2a2d37;
+            top: var(--spacing-6);
+            right: var(--spacing-6);
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
             border-radius: 20px;
-            padding: 8px 16px;
+            padding: var(--spacing-4) var(--spacing-8);
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: var(--spacing-6);
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.3s ease;
             z-index: 100;
         }
+
         .health-badge:hover {
-            background: #222530;
-            border-color: #3a3d47;
-        }
-        .health-icon {
-            font-size: 1.2rem;
-        }
-        .health-text {
-            font-size: 0.85rem;
-            font-weight: 600;
+            background: var(--bg-secondary);
+            border-color: var(--accent-blue);
+            box-shadow: var(--shadow-sm);
         }
 
-        /* Search bar */
+        .health-icon {
+            font-size: 1.1rem;
+        }
+
+        .health-text {
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: capitalize;
+        }
+
+        /* ============================================================================
+           SEARCH UI
+           ============================================================================ */
         .search-container {
             position: relative;
-            margin-bottom: 24px;
+            margin-bottom: var(--spacing-12);
         }
+
         #global-search {
             width: 100%;
-            background: #1a1d27;
-            color: #e0e0e0;
-            border: 1px solid #2a2d37;
-            padding: 12px 16px;
-            border-radius: 8px;
+            background: var(--bg-tertiary);
+            color: var(--text-main);
+            border: 1px solid var(--border-color);
+            padding: var(--spacing-6) var(--spacing-8);
+            border-radius: var(--radius-md);
             font-size: 1rem;
+            transition: all 0.2s ease;
         }
+
         #global-search:focus {
             outline: none;
-            border-color: #7eb8ff;
+            border-color: var(--accent-blue);
+            background: var(--bg-secondary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
         }
+
+        #global-search::placeholder {
+            color: var(--text-faint);
+        }
+
         .search-results {
             position: absolute;
             top: 100%;
             left: 0;
             right: 0;
-            background: #1a1d27;
-            border: 1px solid #2a2d37;
-            border-radius: 8px;
-            margin-top: 8px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            margin-top: var(--spacing-4);
             max-height: 400px;
             overflow-y: auto;
             z-index: 200;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            box-shadow: var(--shadow-lg);
         }
+
         .search-result-item {
-            padding: 12px 16px;
-            border-bottom: 1px solid #2a2d37;
+            padding: var(--spacing-6) var(--spacing-8);
+            border-bottom: 1px solid var(--border-color);
             cursor: pointer;
             display: flex;
             align-items: center;
-            gap: 12px;
-        }
-        .search-result-item:hover {
-            background: #222530;
-        }
-        .search-result-icon {
-            font-size: 1.5rem;
-        }
-        .search-result-content {
-            flex-grow: 1;
-        }
-        .search-result-title {
-            color: #e0e0e0;
-            font-weight: 600;
-            margin-bottom: 4px;
-        }
-        .search-result-subtitle {
-            color: #777;
-            font-size: 0.85rem;
+            gap: var(--spacing-6);
+            transition: background 0.15s ease;
         }
 
-        /* Header */
+        .search-result-item:hover {
+            background: var(--bg-secondary);
+        }
+
+        .search-result-item:last-child {
+            border-bottom: none;
+        }
+
+        .search-result-icon {
+            font-size: 1.5rem;
+            flex-shrink: 0;
+        }
+
+        .search-result-content {
+            flex-grow: 1;
+            min-width: 0;
+        }
+
+        .search-result-title {
+            color: var(--text-main);
+            font-weight: 600;
+            margin-bottom: var(--spacing-2);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .search-result-subtitle {
+            color: var(--text-faint);
+            font-size: 0.8rem;
+        }
+
+        /* ============================================================================
+           HEADER & TYPOGRAPHY
+           ============================================================================ */
         .header {
             text-align: center;
-            margin-bottom: 32px;
+            margin-bottom: var(--spacing-16);
         }
+
         .header h1 {
             font-size: 2.5rem;
-            color: #7eb8ff;
-            margin-bottom: 8px;
+            color: var(--accent-blue);
+            margin-bottom: var(--spacing-4);
+            font-weight: 700;
         }
+
         .header p {
-            color: #888;
+            color: var(--text-muted);
             font-size: 1rem;
         }
 
-        /* Quick actions */
+        /* ============================================================================
+           UNIFIED BUTTON SYSTEM
+           ============================================================================ */
+        .btn,
+        .action-btn,
+        .card-button,
+        .btn-primary,
+        .btn-cancel {
+            padding: var(--spacing-6) var(--spacing-8);
+            border: none;
+            border-radius: var(--radius-md);
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: var(--spacing-6);
+            transition: all 0.2s ease;
+            text-decoration: none;
+        }
+
+        .btn-primary,
+        .action-btn-primary {
+            background: var(--accent-blue);
+            color: white;
+        }
+
+        .btn-primary:hover,
+        .action-btn-primary:hover {
+            background: var(--accent-blue-hover);
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .btn-secondary,
+        .action-btn-secondary {
+            background: var(--accent-purple);
+            color: white;
+        }
+
+        .btn-secondary:hover,
+        .action-btn-secondary:hover {
+            background: #9333EA;
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .btn-ghost,
+        .action-btn-accent,
+        .btn-cancel {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+        }
+
+        .btn-ghost:hover,
+        .action-btn-accent:hover,
+        .btn-cancel:hover {
+            background: var(--bg-secondary);
+            border-color: var(--accent-blue);
+            color: var(--text-main);
+        }
+
+        .btn-danger {
+            background: #EF4444;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #DC2626;
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-md);
+        }
+
+        /* ============================================================================
+           QUICK ACTIONS
+           ============================================================================ */
         .quick-actions {
             display: flex;
-            gap: 12px;
-            margin-bottom: 32px;
+            gap: var(--spacing-8);
+            margin-bottom: var(--spacing-16);
             flex-wrap: wrap;
         }
+
         .action-btn {
-            padding: 12px 20px;
+            padding: var(--spacing-6) var(--spacing-12);
             border: none;
-            border-radius: 6px;
+            border-radius: var(--radius-md);
             font-size: 0.9rem;
             font-weight: 600;
             cursor: pointer;
             display: flex;
             align-items: center;
-            gap: 8px;
-            transition: all 0.2s;
-        }
-        .action-btn-primary {
-            background: #7eb8ff;
-            color: #0f1117;
-        }
-        .action-btn-primary:hover {
-            background: #5a9ee0;
-        }
-        .action-btn-secondary {
-            background: #c792ea;
-            color: #0f1117;
-        }
-        .action-btn-secondary:hover {
-            background: #b078d0;
-        }
-        .action-btn-accent {
-            background: #89ddff;
-            color: #0f1117;
-        }
-        .action-btn-accent:hover {
-            background: #6bc3e5;
+            gap: var(--spacing-6);
+            transition: all 0.2s ease;
         }
 
-        /* Cards Grid */
+        /* ============================================================================
+           CARDS GRID & CARDS
+           ============================================================================ */
         .cards-grid {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 24px;
-            margin-bottom: 48px;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: var(--spacing-12);
+            margin-bottom: var(--spacing-24);
         }
 
         .card {
-            background: #1a1d27;
-            border: 1px solid #2a2d37;
-            border-radius: 8px;
-            padding: 24px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: var(--spacing-12);
             text-decoration: none;
             color: inherit;
-            transition: all 0.2s;
+            transition: all 0.3s ease;
             display: flex;
             flex-direction: column;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent-color, var(--accent-blue)), transparent);
+            opacity: 0;
+            transition: opacity 0.3s ease;
         }
 
         .card:hover {
-            border-color: var(--accent);
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            border-color: var(--accent-color, var(--accent-blue));
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .card:hover::before {
+            opacity: 1;
         }
 
         .card-icon {
-            font-size: 2.5rem;
-            margin-bottom: 16px;
+            font-size: 2.8rem;
+            margin-bottom: var(--spacing-8);
+            display: inline-flex;
+            width: 56px;
+            height: 56px;
+            align-items: center;
+            justify-content: center;
+            background: rgba(99, 102, 241, 0.1);
+            border-radius: var(--radius-md);
         }
 
         .card h2 {
-            font-size: 1.4rem;
-            margin-bottom: 8px;
+            font-size: 1.3rem;
+            margin-bottom: var(--spacing-4);
+            font-weight: 700;
         }
 
         .card p {
-            color: #888;
+            color: var(--text-muted);
             font-size: 0.9rem;
-            margin-bottom: 16px;
+            margin-bottom: var(--spacing-8);
             flex-grow: 1;
+            line-height: 1.5;
         }
 
         .card-stats {
-            margin: 16px 0;
+            margin: var(--spacing-8) 0;
+            padding-top: var(--spacing-8);
+            border-top: 1px solid var(--border-color);
         }
 
         .stat {
             display: flex;
             justify-content: space-between;
-            margin: 8px 0;
+            margin: var(--spacing-6) 0;
             font-size: 0.85rem;
         }
 
-        .stat-label { color: #777; }
+        .stat-label {
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
         .stat-value {
-            font-weight: 600;
-            color: var(--accent);
+            font-weight: 700;
+            color: var(--accent-color, var(--accent-blue));
         }
 
         .card-button {
             background: transparent;
-            border: 1px solid var(--accent);
-            color: var(--accent);
-            padding: 10px 20px;
-            border-radius: 4px;
+            border: 1px solid var(--accent-color, var(--accent-blue));
+            color: var(--accent-color, var(--accent-blue));
+            padding: var(--spacing-6) var(--spacing-8);
+            border-radius: var(--radius-md);
             text-align: center;
-            font-weight: 500;
-            margin-top: 8px;
+            font-weight: 600;
+            margin-top: var(--spacing-8);
+            transition: all 0.2s ease;
         }
 
-        .card.memories { --accent: #7eb8ff; }
-        .card.people { --accent: #c792ea; }
-        .card.entities { --accent: #89ddff; }
-        .card.tasks { --accent: #82aaff; }
-        .card.pgadmin { --accent: #ffc857; }
-        .card.calendar { --accent: #4285f4; }
-        .card.reminders { --accent: #fbbc04; }
-        .card.scheduled { --accent: #ea4335; }
+        .card-button:hover {
+            background: var(--accent-color, var(--accent-blue));
+            color: white;
+        }
 
-        /* Modal */
+        /* Card accent colors */
+        .card.memories { --accent-color: #6366F1; }
+        .card.people { --accent-color: #A855F7; }
+        .card.tasks { --accent-color: #EC4899; }
+        .card.pgadmin { --accent-color: #F59E0B; }
+        .card.calendar { --accent-color: #3B82F6; }
+        .card.reminders { --accent-color: #10B981; }
+        .card.scheduled { --accent-color: #EF4444; }
+
+        /* ============================================================================
+           MODAL DIALOGS
+           ============================================================================ */
         .modal {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.7);
+            background: rgba(0, 0, 0, 0.5);
             display: flex;
             align-items: center;
             justify-content: center;
             z-index: 1000;
+            backdrop-filter: blur(4px);
+            animation: fadeIn 0.2s ease;
         }
+
+        @keyframes fadeIn {
+            from { opacity: 0; backdrop-filter: blur(0px); }
+            to { opacity: 1; backdrop-filter: blur(4px); }
+        }
+
         .modal-content {
-            background: #1a1d27;
-            border: 1px solid #2a2d37;
-            border-radius: 8px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
             max-width: 500px;
-            width: 90%;
-            max-height: 90vh;
+            width: 95%;
+            max-height: 85vh;
             overflow-y: auto;
+            box-shadow: var(--shadow-lg);
+            animation: slideUp 0.3s ease;
         }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
         .modal-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 20px;
-            border-bottom: 1px solid #2a2d37;
+            padding: var(--spacing-12);
+            border-bottom: 1px solid var(--border-color);
         }
+
         .modal-header h3 {
             margin: 0;
-            color: #7eb8ff;
+            color: var(--accent-blue);
+            font-weight: 700;
+            font-size: 1.25rem;
         }
+
         .modal-close {
             background: none;
             border: none;
-            color: #888;
-            font-size: 2rem;
+            color: var(--text-muted);
+            font-size: 1.8rem;
             cursor: pointer;
             padding: 0;
             line-height: 1;
+            transition: color 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            border-radius: var(--radius-md);
         }
+
         .modal-close:hover {
-            color: #e0e0e0;
+            color: var(--text-main);
+            background: var(--bg-secondary);
         }
+
         .modal-body {
-            padding: 20px;
+            padding: var(--spacing-12);
         }
+
         .modal-body label {
             display: block;
-            color: #aaa;
+            color: var(--text-main);
             font-size: 0.85rem;
-            margin: 16px 0 6px 0;
+            font-weight: 600;
+            margin: var(--spacing-8) 0 var(--spacing-4) 0;
         }
+
         .modal-body input,
         .modal-body textarea,
         .modal-body select {
             width: 100%;
-            background: #0f1117;
-            color: #e0e0e0;
-            border: 1px solid #2a2d37;
-            padding: 10px;
-            border-radius: 4px;
+            background: var(--bg-secondary);
+            color: var(--text-main);
+            border: 1px solid var(--border-color);
+            padding: var(--spacing-6) var(--spacing-8);
+            border-radius: var(--radius-md);
             font-size: 0.9rem;
+            transition: all 0.2s ease;
+            font-family: inherit;
         }
+
+        .modal-body input:focus,
+        .modal-body textarea:focus,
+        .modal-body select:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+            background: var(--bg-tertiary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+
+        .modal-body input::placeholder,
+        .modal-body textarea::placeholder {
+            color: var(--text-faint);
+        }
+
+        .modal-body textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
         .modal-footer {
             display: flex;
             justify-content: flex-end;
-            gap: 12px;
-            padding: 20px;
-            border-top: 1px solid #2a2d37;
-        }
-        .btn-cancel {
-            background: transparent;
-            border: 1px solid #444;
-            color: #888;
-            padding: 10px 20px;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        .btn-cancel:hover {
-            border-color: #666;
-            color: #aaa;
-        }
-        .btn-primary {
-            background: #7eb8ff;
-            color: #0f1117;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 4px;
-            font-weight: 600;
-            cursor: pointer;
-        }
-        .btn-primary:hover {
-            background: #5a9ee0;
+            gap: var(--spacing-8);
+            padding: var(--spacing-12);
+            border-top: 1px solid var(--border-color);
         }
 
-        /* Activity timeline */
+        /* ============================================================================
+           SECTIONS & ACTIVITY TIMELINE
+           ============================================================================ */
         .section {
-            margin: 48px 0;
+            margin: var(--spacing-24) 0;
         }
+
         .section-title {
             font-size: 1.4rem;
-            color: #7eb8ff;
-            margin-bottom: 20px;
+            color: var(--accent-blue);
+            margin-bottom: var(--spacing-12);
+            font-weight: 700;
         }
+
         .activity-timeline {
-            background: #1a1d27;
-            border: 1px solid #2a2d37;
-            border-radius: 8px;
-            padding: 16px;
-            max-height: 400px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: var(--spacing-8);
+            max-height: 450px;
             overflow-y: auto;
         }
+
         .activity-item {
             display: flex;
-            gap: 12px;
-            padding: 12px;
-            border-bottom: 1px solid #2a2d37;
+            gap: var(--spacing-8);
+            padding: var(--spacing-8);
+            border-bottom: 1px solid var(--border-color);
+            transition: background 0.15s ease;
+            border-radius: var(--radius-md);
         }
+
+        .activity-item:hover {
+            background: var(--bg-secondary);
+        }
+
         .activity-item:last-child {
             border-bottom: none;
         }
+
         .activity-icon {
-            font-size: 1.5rem;
+            font-size: 1.4rem;
             flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            background: rgba(99, 102, 241, 0.1);
+            border-radius: var(--radius-md);
         }
+
         .activity-content {
             flex-grow: 1;
+            min-width: 0;
         }
+
         .activity-description {
-            color: #e0e0e0;
+            color: var(--text-main);
             font-size: 0.9rem;
-            margin-bottom: 4px;
+            margin-bottom: var(--spacing-2);
+            font-weight: 500;
         }
+
         .activity-time {
-            color: #777;
-            font-size: 0.8rem;
+            color: var(--text-faint);
+            font-size: 0.75rem;
         }
+
         .activity-empty {
             text-align: center;
-            color: #555;
-            padding: 20px;
+            color: var(--text-faint);
+            padding: var(--spacing-12);
+            font-size: 0.9rem;
         }
 
-        /* Charts */
+        /* ============================================================================
+           CHARTS
+           ============================================================================ */
         .charts-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 24px;
-        }
-        .chart-container {
-            background: #1a1d27;
-            border: 1px solid #2a2d37;
-            border-radius: 8px;
-            padding: 20px;
-        }
-        .chart-title {
-            font-size: 1rem;
-            color: #aaa;
-            margin-bottom: 16px;
-            text-align: center;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: var(--spacing-12);
         }
 
-        /* Health modal */
+        .chart-container {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: var(--spacing-12);
+            transition: all 0.3s ease;
+        }
+
+        .chart-container:hover {
+            border-color: var(--accent-blue);
+            box-shadow: var(--shadow-md);
+        }
+
+        .chart-title {
+            font-size: 1.05rem;
+            color: var(--text-main);
+            margin-bottom: var(--spacing-8);
+            font-weight: 700;
+            text-align: left;
+        }
+
+        /* ============================================================================
+           HEALTH METRICS
+           ============================================================================ */
         .health-metric {
             display: flex;
             justify-content: space-between;
-            padding: 12px 0;
-            border-bottom: 1px solid #2a2d37;
+            align-items: center;
+            padding: var(--spacing-8) 0;
+            border-bottom: 1px solid var(--border-color);
         }
+
         .health-metric:last-child {
             border-bottom: none;
         }
+
         .metric-label {
-            color: #888;
+            color: var(--text-muted);
             font-size: 0.9rem;
-        }
-        .metric-value {
-            color: #e0e0e0;
-            font-weight: 600;
+            font-weight: 500;
         }
 
-        /* Settings button */
+        .metric-value {
+            color: var(--accent-blue);
+            font-weight: 700;
+            font-family: 'Monaco', 'Menlo', monospace;
+        }
+
+        /* ============================================================================
+           SETTINGS BUTTON
+           ============================================================================ */
         .settings-btn {
             position: fixed;
-            bottom: 20px;
-            right: 20px;
-            background: #1a1d27;
-            border: 1px solid #2a2d37;
-            color: #7eb8ff;
-            width: 50px;
-            height: 50px;
+            bottom: var(--spacing-12);
+            right: var(--spacing-12);
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--accent-blue);
+            width: 56px;
+            height: 56px;
             border-radius: 50%;
-            font-size: 1.5rem;
+            font-size: 1.4rem;
             cursor: pointer;
             z-index: 100;
-            transition: all 0.2s;
-        }
-        .settings-btn:hover {
-            background: #222530;
-            border-color: #7eb8ff;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
-        /* Responsive */
+        .settings-btn:hover {
+            background: var(--bg-secondary);
+            border-color: var(--accent-blue);
+            transform: scale(1.05);
+            box-shadow: var(--shadow-lg);
+        }
+
+        /* ============================================================================
+           RESPONSIVE DESIGN
+           ============================================================================ */
         @media (max-width: 768px) {
+            :root {
+                --spacing-12: 16px;
+                --spacing-16: 24px;
+            }
+
+            body {
+                padding: var(--spacing-8);
+            }
+
             .cards-grid {
                 grid-template-columns: 1fr;
             }
+
             .header h1 {
                 font-size: 1.8rem;
             }
+
             .quick-actions {
                 flex-direction: column;
             }
+
             .action-btn {
                 width: 100%;
                 justify-content: center;
             }
+
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .health-badge {
+                top: var(--spacing-4);
+                right: var(--spacing-4);
+                font-size: 0.8rem;
+            }
+
+            .settings-btn {
+                bottom: var(--spacing-8);
+                right: var(--spacing-8);
+                width: 48px;
+                height: 48px;
+            }
         }
 
-        /* Light theme support */
+        @media (max-width: 480px) {
+            .container {
+                padding: 0;
+            }
+
+            .modal-content {
+                width: 100%;
+                border-radius: var(--radius-md);
+            }
+
+            .cards-grid {
+                gap: var(--spacing-8);
+            }
+        }
+
+        /* ============================================================================
+           LIGHT THEME SUPPORT
+           ============================================================================ */
         body.light-theme {
-            background: #f5f5f5;
-            color: #222;
+            --bg-main: #F9FAFB;
+            --bg-secondary: #F3F4F6;
+            --bg-tertiary: #FFFFFF;
+            --border-color: #E5E7EB;
+            --text-main: #111827;
+            --text-muted: #6B7280;
+            --text-faint: #9CA3AF;
         }
+
         body.light-theme .card {
-            background: #fff;
-            border-color: #ddd;
+            box-shadow: var(--shadow-sm);
         }
-        body.light-theme .activity-timeline {
-            background: #fff;
-            border-color: #ddd;
+
+        body.light-theme .card:hover {
+            box-shadow: var(--shadow-md);
+        }
+
+        body.light-theme .modal-content {
+            box-shadow: var(--shadow-lg);
+        }
+
+        body.light-theme .search-results {
+            box-shadow: var(--shadow-md);
         }
     </style>
 </head>
 <body>
-    <div class="health-badge" id="health-badge" title="System Health">
+    <!-- Health Badge -->
+    <div class="health-badge" id="health-badge" title="Click to view system health">
         <span class="health-icon">⚪</span>
         <span class="health-text">Checking...</span>
     </div>
 
-    <button class="settings-btn" onclick="openSettingsModal()" title="Settings">⚙️</button>
+    <!-- Settings Button -->
+    <button class="settings-btn" onclick="openSettingsModal()" title="Open settings">⚙️</button>
 
+    <!-- Health Modal -->
     <div id="health-modal" class="modal" style="display: none;">
         <div class="modal-content">
             <div class="modal-header">
@@ -1521,6 +1945,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         </div>
     </div>
 
+    <!-- Add Memory Modal -->
     <div id="add-memory-modal" class="modal" style="display: none;">
         <div class="modal-content">
             <div class="modal-header">
@@ -1529,7 +1954,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
             </div>
             <div class="modal-body">
                 <label>Content</label>
-                <textarea id="memory-content" rows="4" placeholder="Enter memory content..."></textarea>
+                <textarea id="memory-content" placeholder="Enter memory content..."></textarea>
                 <label>Category</label>
                 <select id="memory-category">
                     <option value="fact">Fact</option>
@@ -1541,12 +1966,13 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                 </select>
             </div>
             <div class="modal-footer">
-                <button class="btn-cancel" onclick="closeAddMemoryModal()">Cancel</button>
-                <button class="btn-primary" onclick="submitMemory()">Add Memory</button>
+                <button class="btn btn-ghost" onclick="closeAddMemoryModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="submitMemory()">Add Memory</button>
             </div>
         </div>
     </div>
 
+    <!-- Add Person Modal -->
     <div id="add-person-modal" class="modal" style="display: none;">
         <div class="modal-content">
             <div class="modal-header">
@@ -1563,15 +1989,16 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                 <label>Email</label>
                 <input type="email" id="person-email" placeholder="Email address">
                 <label>Notes</label>
-                <textarea id="person-notes" rows="3" placeholder="Additional notes..."></textarea>
+                <textarea id="person-notes" placeholder="Additional notes..."></textarea>
             </div>
             <div class="modal-footer">
-                <button class="btn-cancel" onclick="closeAddPersonModal()">Cancel</button>
-                <button class="btn-primary" onclick="submitPerson()">Add Person</button>
+                <button class="btn btn-ghost" onclick="closeAddPersonModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="submitPerson()">Add Person</button>
             </div>
         </div>
     </div>
 
+    <!-- Add Task Modal -->
     <div id="add-task-modal" class="modal" style="display: none;">
         <div class="modal-content">
             <div class="modal-header">
@@ -1582,7 +2009,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                 <label>Title *</label>
                 <input type="text" id="task-title" placeholder="What needs to be done?" required>
                 <label>Description</label>
-                <textarea id="task-description" rows="3" placeholder="Additional details..."></textarea>
+                <textarea id="task-description" placeholder="Additional details..."></textarea>
                 <label>Priority</label>
                 <select id="task-priority">
                     <option value="0">None</option>
@@ -1601,16 +2028,17 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                 </label>
             </div>
             <div class="modal-footer">
-                <button class="btn-cancel" onclick="closeAddTaskModal()">Cancel</button>
-                <button class="btn-primary" onclick="submitAddTask()">Add Task</button>
+                <button class="btn btn-ghost" onclick="closeAddTaskModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="submitAddTask()">Add Task</button>
             </div>
         </div>
     </div>
 
+    <!-- Settings Modal -->
     <div id="settings-modal" class="modal" style="display: none;">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>Settings</h3>
+                <h3>⚙️ Settings</h3>
                 <button class="modal-close" onclick="closeSettingsModal()">×</button>
             </div>
             <div class="modal-body">
@@ -1629,23 +2057,27 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                 <input type="number" id="pref-refresh-interval" min="10" max="300" step="10">
             </div>
             <div class="modal-footer">
-                <button class="btn-cancel" onclick="closeSettingsModal()">Cancel</button>
-                <button class="btn-primary" onclick="savePreferences()">Save</button>
+                <button class="btn btn-ghost" onclick="closeSettingsModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="savePreferences()">Save</button>
             </div>
         </div>
     </div>
 
+    <!-- Main Container -->
     <div class="container">
+        <!-- Search Section -->
         <div class="search-container">
-            <input type="text" id="global-search" placeholder="Search memories, people, entities...">
+            <input type="text" id="global-search" placeholder="🔍 Search memories, people, tasks...">
             <div id="search-results" class="search-results" style="display: none;"></div>
         </div>
 
+        <!-- Header -->
         <div class="header">
-            <h1>🤖 Skippy AI Assistant</h1>
-            <p>Your personal AI home automation & life management system</p>
+            <h1>🤖 Skippy Dashboard</h1>
+            <p>Personal AI assistant for memories, tasks, and communication</p>
         </div>
 
+        <!-- Quick Actions -->
         <div class="quick-actions">
             <button class="action-btn action-btn-primary" onclick="openAddMemoryModal()">
                 <span>🧠</span> Add Memory
@@ -1658,6 +2090,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
             </button>
         </div>
 
+        <!-- Dashboard Cards Grid -->
         <div class="cards-grid">
             <a href="/memories" class="card memories">
                 <div class="card-icon">🧠</div>
@@ -1665,7 +2098,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                 <p>Long-term memory storage with semantic search</p>
                 <div class="card-stats">
                     <div class="stat">
-                        <span class="stat-label">Total Memories</span>
+                        <span class="stat-label">Total</span>
                         <span class="stat-value" id="memories-total">-</span>
                     </div>
                     <div class="stat">
@@ -1682,7 +2115,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                 <p>Contact management & importance tracking</p>
                 <div class="card-stats">
                     <div class="stat">
-                        <span class="stat-label">Total People</span>
+                        <span class="stat-label">Total</span>
                         <span class="stat-value" id="people-total">-</span>
                     </div>
                     <div class="stat">
@@ -1690,7 +2123,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                         <span class="stat-value" id="people-important">-</span>
                     </div>
                 </div>
-                <div class="card-button">View People →</div>
+                <div class="card-button">View People</div>
             </a>
 
             <a href="/tasks" class="card tasks">
@@ -1707,47 +2140,32 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                         <span class="stat-value" id="tasks-due-today">-</span>
                     </div>
                 </div>
-                <div class="card-button">View Tasks →</div>
+                <div class="card-button">View Tasks</div>
             </a>
 
-            <a href="http://10.0.10.132:5050" target="_blank" class="card pgadmin">
-                <div class="card-icon">🗄️</div>
-                <h2>pgAdmin</h2>
-                <p>PostgreSQL database administration & query builder</p>
-                <div class="card-stats">
-                    <div class="stat">
-                        <span class="stat-label">Host</span>
-                        <span class="stat-value">10.0.10.132:5050</span>
-                    </div>
-                    <div class="stat">
-                        <span class="stat-label">User</span>
-                        <span class="stat-value">admin@skippy.dev</span>
-                    </div>
-                </div>
-                <div class="card-button">Open pgAdmin →</div>
-            </a>
-
+            <!-- Calendar Card -->
             <a href="/calendar" class="card calendar">
                 <div class="card-icon">📅</div>
                 <h2>Calendar</h2>
                 <p>View and manage Google Calendar events</p>
                 <div class="card-stats">
                     <div class="stat">
-                        <span class="stat-label">Integration</span>
-                        <span class="stat-value">Google Calendar</span>
+                        <span class="stat-label">Service</span>
+                        <span class="stat-value">Google</span>
                     </div>
                     <div class="stat">
-                        <span class="stat-label">Account</span>
-                        <span class="stat-value">brown.nolan@gmail.com</span>
+                        <span class="stat-label">Email</span>
+                        <span class="stat-value">brown.nolan</span>
                     </div>
                 </div>
-                <div class="card-button">View Calendar →</div>
+                <div class="card-button">View Calendar</div>
             </a>
 
+            <!-- Reminders Card -->
             <a href="/reminders" class="card reminders">
                 <div class="card-icon">🔔</div>
                 <h2>Reminders</h2>
-                <p>Event reminder notifications and acknowledgments</p>
+                <p>Event notifications and reminders</p>
                 <div class="card-stats">
                     <div class="stat">
                         <span class="stat-label">Pending</span>
@@ -1758,43 +2176,64 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                         <span class="stat-value" id="totalRemindersCount">-</span>
                     </div>
                 </div>
-                <div class="card-button">View Reminders →</div>
+                <div class="card-button">View Reminders</div>
             </a>
 
+            <!-- Scheduled Jobs Card -->
             <a href="/scheduled" class="card scheduled">
                 <div class="card-icon">⏰</div>
-                <h2>Scheduled Tasks</h2>
-                <p>Recurring jobs, timers, and automated routines</p>
+                <h2>Scheduled Jobs</h2>
+                <p>Automated routines and scheduled tasks</p>
                 <div class="card-stats">
                     <div class="stat">
-                        <span class="stat-label">Active Jobs</span>
+                        <span class="stat-label">Active</span>
                         <span class="stat-value" id="activeJobsCount">-</span>
                     </div>
                     <div class="stat">
-                        <span class="stat-label">Source</span>
-                        <span class="stat-value">Predefined + Chat</span>
+                        <span class="stat-label">Scheduler</span>
+                        <span class="stat-value">APScheduler</span>
                     </div>
                 </div>
-                <div class="card-button">View Tasks →</div>
+                <div class="card-button">View Jobs</div>
+            </a>
+
+            <!-- Database Admin Card -->
+            <a href="http://10.0.10.132:5050" target="_blank" class="card pgadmin">
+                <div class="card-icon">🗄️</div>
+                <h2>Database Admin</h2>
+                <p>PostgreSQL administration & queries</p>
+                <div class="card-stats">
+                    <div class="stat">
+                        <span class="stat-label">Host</span>
+                        <span class="stat-value">10.0.10.132</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Tool</span>
+                        <span class="stat-value">pgAdmin</span>
+                    </div>
+                </div>
+                <div class="card-button">Open Admin</div>
             </a>
         </div>
 
-        <div class="section">
-            <h2 class="section-title">📊 Recent Activity</h2>
+        <!-- Recent Activity Section -->
+        <section class="section">
+            <h2 class="section-title">Recent Activity</h2>
             <div class="activity-timeline" id="activity-timeline">
                 <div class="activity-empty">Loading...</div>
             </div>
-        </div>
+        </section>
 
-        <div class="section">
-            <h2 class="section-title">📈 Statistics</h2>
+        <!-- Statistics Section -->
+        <section class="section">
+            <h2 class="section-title">Statistics</h2>
             <div class="charts-grid">
                 <div class="chart-container">
                     <h3 class="chart-title">Memory Growth (30 days)</h3>
                     <canvas id="memory-growth-chart"></canvas>
                 </div>
                 <div class="chart-container">
-                    <h3 class="chart-title">People Importance</h3>
+                    <h3 class="chart-title">People Importance Distribution</h3>
                     <canvas id="importance-chart"></canvas>
                 </div>
                 <div class="chart-container">
@@ -1802,7 +2241,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                     <canvas id="entity-status-chart"></canvas>
                 </div>
             </div>
-        </div>
+        </section>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>

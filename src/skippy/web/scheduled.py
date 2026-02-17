@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse
 import psycopg
 
 from skippy.config import settings
+from .shared_ui import render_html_page, render_page_header, render_section
 
 logger = logging.getLogger("skippy")
 router = APIRouter()
@@ -81,199 +82,40 @@ async def scheduled_page():
     return SCHEDULED_HTML
 
 
-SCHEDULED_HTML = """<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scheduled Tasks - Skippy</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+def get_scheduled_html() -> str:
+    """Generate scheduled tasks page using shared design system."""
 
-        body {
-            background: #0a0d17;
-            color: #e0e0e0;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            padding: 1rem;
-        }
+    page_content = render_page_header(
+        "⏰ Scheduled Tasks",
+        "View and manage your scheduled automation tasks"
+    )
 
-        nav {
-            background: #1a1d27;
-            padding: 1rem 0;
-            margin-bottom: 2rem;
-            border-bottom: 1px solid #333;
-        }
-
-        nav a {
-            color: #7eb8ff;
-            text-decoration: none;
-            margin: 0 1.5rem;
-        }
-
-        nav a:hover {
-            color: #fff;
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 2rem;
-        }
-
-        h1 {
-            font-size: 2rem;
-            color: #fff;
-        }
-
-        .info-box {
-            background: #1a1d27;
-            border: 1px solid #666;
-            border-radius: 6px;
-            padding: 1rem;
-            margin-bottom: 2rem;
-            color: #999;
-        }
-
-        table {
-            width: 100%;
-            background: #1a1d27;
-            border: 1px solid #333;
-            border-radius: 8px;
-            border-collapse: collapse;
-            overflow: hidden;
-        }
-
-        th {
-            background: #0a0d17;
-            color: #7eb8ff;
-            padding: 1rem;
-            text-align: left;
-            border-bottom: 1px solid #333;
-        }
-
-        td {
-            padding: 1rem;
-            border-bottom: 1px solid #333;
-        }
-
-        tr:hover {
-            background: #0a0d17;
-        }
-
-        .badge {
-            display: inline-block;
-            padding: 0.3rem 0.8rem;
-            border-radius: 20px;
-            font-size: 0.85rem;
-            font-weight: bold;
-        }
-
-        .badge-cron {
-            background: #4299e1;
-            color: white;
-        }
-
-        .badge-interval {
-            background: #48bb78;
-            color: white;
-        }
-
-        .badge-date {
-            background: #fbbc04;
-            color: #000;
-        }
-
-        .badge-predefined {
-            background: #805ad5;
-            color: white;
-        }
-
-        .badge-chat {
-            background: #ed8936;
-            color: white;
-        }
-
-        .status-enabled {
-            color: #48bb78;
-        }
-
-        .status-disabled {
-            color: #888;
-        }
-
-        .btn {
-            padding: 0.5rem 1rem;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 0.9rem;
-        }
-
-        .btn-toggle {
-            background: #4299e1;
-            color: white;
-        }
-
-        .btn-delete {
-            background: #f56565;
-            color: white;
-        }
-
-        .btn:hover {
-            opacity: 0.8;
-        }
-
-        .empty-state {
-            text-align: center;
-            color: #666;
-            padding: 2rem;
-        }
-    </style>
-</head>
-<body>
-    <nav>
-        <a href="/">← Back to Dashboard</a>
-        <a href="/memories">Memories</a>
-        <a href="/people">People</a>
-        <a href="/tasks">Tasks</a>
-        <a href="/calendar">Calendar</a>
-        <a href="/reminders">Reminders</a>
-    </nav>
-
-    <div class="container">
-        <div class="header">
-            <h1>⏰ Scheduled Tasks</h1>
-        </div>
-
-        <div class="info-box">
+    # Info box
+    info_html = '''
+        <div style="background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: var(--spacing-8); color: var(--text-muted); font-size: 0.9rem;">
             <strong>Note:</strong> To create or delete scheduled tasks, use the chat interface with commands like "create a scheduled task" or "delete task [name]".
-        </div>
+        </div>'''
 
-        <table>
+    # Tasks table
+    tasks_html = '''
+        <table style="width: 100%; border-collapse: collapse;">
             <thead>
                 <tr>
-                    <th>Name</th>
-                    <th>Type</th>
-                    <th>Schedule</th>
-                    <th>Source</th>
-                    <th>Status</th>
-                    <th>Actions</th>
+                    <th style="background: var(--bg-tertiary); color: var(--accent-blue); padding: var(--spacing-8); text-align: left; border-bottom: 1px solid var(--border-color);">Name</th>
+                    <th style="background: var(--bg-tertiary); color: var(--accent-blue); padding: var(--spacing-8); text-align: left; border-bottom: 1px solid var(--border-color);">Type</th>
+                    <th style="background: var(--bg-tertiary); color: var(--accent-blue); padding: var(--spacing-8); text-align: left; border-bottom: 1px solid var(--border-color);">Schedule</th>
+                    <th style="background: var(--bg-tertiary); color: var(--accent-blue); padding: var(--spacing-8); text-align: left; border-bottom: 1px solid var(--border-color);">Source</th>
+                    <th style="background: var(--bg-tertiary); color: var(--accent-blue); padding: var(--spacing-8); text-align: left; border-bottom: 1px solid var(--border-color);">Status</th>
+                    <th style="background: var(--bg-tertiary); color: var(--accent-blue); padding: var(--spacing-8); text-align: left; border-bottom: 1px solid var(--border-color);">Actions</th>
                 </tr>
             </thead>
             <tbody id="tasksTable"></tbody>
-        </table>
-    </div>
+        </table>'''
 
+    page_content += render_section("", info_html)
+    page_content += render_section("", tasks_html)
+
+    scripts = '''
     <script>
         async function loadTasks() {
             try {
@@ -282,23 +124,31 @@ SCHEDULED_HTML = """<!DOCTYPE html>
                 const tbody = document.getElementById('tasksTable');
 
                 if (!tasks || tasks.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No scheduled tasks</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: var(--spacing-12);">No scheduled tasks</td></tr>';
                     return;
                 }
 
                 tbody.innerHTML = tasks.map(t => {
                     const schedule = t.schedule_config ? JSON.stringify(t.schedule_config) : 'N/A';
+                    const typeColors = {
+                        'cron': 'var(--accent-blue)',
+                        'interval': '#48bb78',
+                        'date': '#fbbc04',
+                        'predefined': '#805ad5',
+                        'chat': '#ed8936'
+                    };
+                    const typeColor = typeColors[t.schedule_type] || 'var(--accent-blue)';
+                    const sourceColor = typeColors[t.source] || 'var(--accent-blue)';
+
                     return `
-                        <tr>
-                            <td><strong>${t.name}</strong></td>
-                            <td><span class="badge badge-${t.schedule_type}">${t.schedule_type}</span></td>
-                            <td><code>${schedule}</code></td>
-                            <td><span class="badge badge-${t.source}">${t.source}</span></td>
-                            <td><span class="status-${t.enabled ? 'enabled' : 'disabled'}">
-                                ${t.enabled ? '✓ Enabled' : '✗ Disabled'}
-                            </span></td>
-                            <td>
-                                <button class="btn btn-toggle" onclick="toggleTask('${t.task_id}')">
+                        <tr style="border-bottom: 1px solid var(--border-color);">
+                            <td style="padding: var(--spacing-8); color: var(--text-main); font-weight: 600;">${t.name}</td>
+                            <td style="padding: var(--spacing-8);"><span style="color: ${typeColor}; font-size: 0.85rem; font-weight: 600;">${t.schedule_type}</span></td>
+                            <td style="padding: var(--spacing-8); color: var(--text-muted); font-size: 0.85rem; font-family: monospace;">${schedule}</td>
+                            <td style="padding: var(--spacing-8);"><span style="color: ${sourceColor}; font-size: 0.85rem; font-weight: 600;">${t.source}</span></td>
+                            <td style="padding: var(--spacing-8); color: ${t.enabled ? '#48bb78' : 'var(--text-muted)'}">${t.enabled ? '✓ Enabled' : '✗ Disabled'}</td>
+                            <td style="padding: var(--spacing-8);">
+                                <button class="btn btn-secondary" onclick="toggleTask('${t.task_id}')" style="margin-right: var(--spacing-4);">
                                     ${t.enabled ? 'Disable' : 'Enable'}
                                 </button>
                             </td>
@@ -307,7 +157,7 @@ SCHEDULED_HTML = """<!DOCTYPE html>
                 }).join('');
             } catch (err) {
                 console.error(err);
-                document.getElementById('tasksTable').innerHTML = '<tr><td colspan="6">Failed to load tasks</td></tr>';
+                document.getElementById('tasksTable').innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: var(--spacing-12);">Failed to load tasks</td></tr>';
             }
         }
 
@@ -319,6 +169,9 @@ SCHEDULED_HTML = """<!DOCTYPE html>
         loadTasks();
         setInterval(loadTasks, 30000);
     </script>
-</body>
-</html>
-"""
+    '''
+
+    return render_html_page("Scheduled Tasks", page_content, extra_scripts=scripts)
+
+
+SCHEDULED_HTML = get_scheduled_html()

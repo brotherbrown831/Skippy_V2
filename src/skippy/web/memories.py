@@ -6,6 +6,7 @@ from fastapi import APIRouter, Query
 from fastapi.responses import HTMLResponse
 
 from skippy.config import settings
+from .shared_ui import render_html_page, render_page_header, render_section, render_button
 
 logger = logging.getLogger("skippy")
 
@@ -98,202 +99,145 @@ async def memories_page():
     return MEMORIES_PAGE_HTML
 
 
-MEMORIES_PAGE_HTML = """\
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Skippy's Memory Search</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: #0f1117;
-    color: #e0e0e0;
-    padding: 24px;
-    max-width: 1200px;
-    margin: 0 auto;
-  }
-  h1 { font-size: 1.6rem; margin-bottom: 4px; color: #7eb8ff; }
-  .subtitle { color: #888; font-size: 0.85rem; margin-bottom: 20px; }
+def get_memories_page_html() -> str:
+    """Generate the memories page HTML using the shared design system."""
 
-  /* Tabs */
-  .tabs {
-    display: flex; gap: 0; margin-bottom: 24px;
-    border-bottom: 2px solid #2a2d37;
-  }
-  .tab {
-    padding: 10px 24px; cursor: pointer;
-    color: #888; font-size: 0.9rem; font-weight: 600;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -2px; transition: all 0.2s;
-  }
-  .tab:hover { color: #aaa; }
-  .tab.active { color: #7eb8ff; border-bottom-color: #7eb8ff; }
-  .tab-panel { display: none; }
-  .tab-panel.active { display: block; }
+    page_content = render_page_header(
+        "🧠 Memories",
+        "Search and manage your semantic memories"
+    )
 
-  .controls {
-    display: flex; gap: 12px; flex-wrap: wrap;
-    align-items: center; margin-bottom: 20px;
-  }
-  select {
-    background: #1a1d27; color: #e0e0e0; border: 1px solid #333;
-    padding: 6px 10px; border-radius: 6px; font-size: 0.85rem;
-  }
-  .count { color: #888; font-size: 0.85rem; margin-left: auto; }
-  table {
-    width: 100%; border-collapse: collapse;
-    font-size: 0.85rem;
-  }
-  th {
-    text-align: left; padding: 10px 12px;
-    background: #1a1d27; color: #7eb8ff;
-    border-bottom: 2px solid #2a2d37;
-    position: sticky; top: 0;
-  }
-  td {
-    padding: 10px 12px;
-    border-bottom: 1px solid #1e2130;
-    vertical-align: top;
-  }
-  tr:hover td { background: #1a1d27; }
-  .content-cell { max-width: 500px; line-height: 1.4; }
-  .badge {
-    display: inline-block; padding: 2px 8px;
-    border-radius: 10px; font-size: 0.75rem;
-    font-weight: 600; text-transform: uppercase;
-  }
-  .badge-family { background: #2d1f3d; color: #c792ea; }
-  .badge-person { background: #1f2d3d; color: #82aaff; }
-  .badge-preference { background: #2d3d1f; color: #c3e88d; }
-  .badge-project { background: #3d2d1f; color: #ffcb6b; }
-  .badge-technical { background: #1f3d3d; color: #89ddff; }
-  .badge-event { background: #1f3d2d; color: #80cbc4; }
-  .badge-recurring_event { background: #3d1f2d; color: #ff5370; }
-  .badge-fact { background: #2d2d1f; color: #f0e68c; }
-  .badge-rel { background: #1f2d3d; color: #82aaff; }
-  .score {
-    font-variant-numeric: tabular-nums;
-    color: #aaa;
-  }
-  .date { white-space: nowrap; color: #777; font-size: 0.8rem; }
-  .empty { color: #555; }
-  .btn-del {
-    background: transparent; border: 1px solid #444; color: #ff5370;
-    padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 0.75rem;
-  }
-  .btn-del:hover { background: #2a1520; border-color: #ff5370; }
-  @media (max-width: 768px) {
-    .hide-mobile { display: none; }
-    .content-cell { max-width: 250px; }
-  }
-</style>
-</head>
-<body>
-<h1>Skippy's Memory Search</h1>
-<p class="subtitle">All the things this magnificent AI remembers about you monkeys.</p>
+    controls_html = '''
+        <div class="page-controls">
+            <select id="category">
+                <option value="">All Categories</option>
+                <option value="family">Family</option>
+                <option value="person">Person</option>
+                <option value="preference">Preference</option>
+                <option value="project">Project</option>
+                <option value="technical">Technical</option>
+                <option value="event">Event</option>
+                <option value="recurring_event">Recurring Event</option>
+                <option value="fact">Fact</option>
+            </select>
+            <select id="sort">
+                <option value="created_at">Newest First</option>
+                <option value="confidence_score">Confidence</option>
+                <option value="reinforcement_count">Most Reinforced</option>
+                <option value="category">Category</option>
+                <option value="updated_at">Recently Updated</option>
+            </select>
+            <span class="text-muted" id="mem-count">Loading...</span>
+        </div>'''
 
-<h2 style="margin-top: 2rem; margin-bottom: 1.5rem; font-size: 1.5rem;">Semantic Memories</h2>
+    table_html = '''
+        <table>
+            <thead>
+                <tr>
+                    <th>Content</th>
+                    <th>Category</th>
+                    <th class="hide-mobile">Confidence</th>
+                    <th class="hide-mobile">Reinforced</th>
+                    <th class="hide-mobile">Created</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="mem-tbody">
+                <tr><td colspan="6" class="text-center text-muted">Loading memories...</td></tr>
+            </tbody>
+        </table>'''
 
-<!-- Memories Tab -->
-<div id="tab-memories" class="tab-panel active">
-  <div class="controls">
-    <select id="category">
-      <option value="">All Categories</option>
-      <option value="family">Family</option>
-      <option value="person">Person</option>
-      <option value="preference">Preference</option>
-      <option value="project">Project</option>
-      <option value="technical">Technical</option>
-      <option value="event">Event</option>
-      <option value="recurring_event">Recurring Event</option>
-      <option value="fact">Fact</option>
-    </select>
-    <select id="sort">
-      <option value="created_at">Newest First</option>
-      <option value="confidence_score">Confidence</option>
-      <option value="reinforcement_count">Most Reinforced</option>
-      <option value="category">Category</option>
-      <option value="updated_at">Recently Updated</option>
-    </select>
-    <span class="count" id="mem-count"></span>
-  </div>
-  <table>
-    <thead>
-      <tr>
-        <th>Content</th>
-        <th>Category</th>
-        <th class="hide-mobile">Confidence</th>
-        <th class="hide-mobile">Reinforced</th>
-        <th class="hide-mobile">Created</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody id="mem-tbody"></tbody>
-  </table>
-</div>
+    section_html = render_section("Semantic Memories", controls_html + table_html)
 
-<script>
-/* --- Tab switching --- */
-/* --- Memories --- */
-const categoryEl = document.getElementById('category');
-const sortEl = document.getElementById('sort');
-const memTbody = document.getElementById('mem-tbody');
-const memCount = document.getElementById('mem-count');
+    page_content += section_html
 
-async function loadMemories() {
-  const params = new URLSearchParams();
-  const cat = categoryEl.value;
-  const sort = sortEl.value;
-  if (cat) params.set('category', cat);
-  params.set('sort', sort);
-  params.set('order', 'desc');
-  try {
-    const res = await fetch('/api/memories?' + params);
-    const data = await res.json();
-    memCount.textContent = data.length + ' memor' + (data.length === 1 ? 'y' : 'ies');
-    memTbody.innerHTML = data.map(m => `
-      <tr>
-        <td class="content-cell">${esc(m.content)}</td>
-        <td><span class="badge badge-${m.category}">${m.category}</span></td>
-        <td class="hide-mobile score">${(m.confidence_score ?? 0).toFixed(2)}</td>
-        <td class="hide-mobile score">${m.reinforcement_count ?? 0}</td>
-        <td class="hide-mobile date">${fmtDate(m.created_at)}</td>
-        <td><button class="btn-del" onclick="delMem(${m.memory_id})">Delete</button></td>
-      </tr>
-    `).join('');
-  } catch (err) {
-    memTbody.innerHTML = '<tr><td colspan="6">Failed to load memories.</td></tr>';
-  }
-}
+    scripts = '''
+    <script>
+        const categoryEl = document.getElementById('category');
+        const sortEl = document.getElementById('sort');
+        const memTbody = document.getElementById('mem-tbody');
+        const memCount = document.getElementById('mem-count');
 
-async function delMem(id) {
-  if (!confirm('Delete this memory?')) return;
-  await fetch('/api/memories/' + id, { method: 'DELETE' });
-  loadMemories();
-}
+        async function loadMemories() {
+            const params = new URLSearchParams();
+            const cat = categoryEl.value;
+            const sort = sortEl.value;
+            if (cat) params.set('category', cat);
+            params.set('sort', sort);
+            params.set('order', 'desc');
+            try {
+                const res = await fetch('/api/memories?' + params);
+                const data = await res.json();
+                memCount.textContent = data.length + ' memor' + (data.length === 1 ? 'y' : 'ies');
+                memTbody.innerHTML = data.map(m => `
+                    <tr>
+                        <td class="content-cell">${esc(m.content)}</td>
+                        <td><span class="badge badge-${m.category}">${m.category}</span></td>
+                        <td class="hide-mobile score">${(m.confidence_score ?? 0).toFixed(2)}</td>
+                        <td class="hide-mobile score">${m.reinforcement_count ?? 0}</td>
+                        <td class="hide-mobile date">${fmtDate(m.created_at)}</td>
+                        <td><button class="btn btn-danger" style="padding: 4px 8px; font-size: 0.75rem;" onclick="delMem(${m.memory_id})">Delete</button></td>
+                    </tr>
+                `).join('');
+            } catch (err) {
+                memTbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Failed to load memories.</td></tr>';
+            }
+        }
 
-categoryEl.addEventListener('change', loadMemories);
-sortEl.addEventListener('change', loadMemories);
+        async function delMem(id) {
+            if (!confirm('Delete this memory?')) return;
+            await fetch('/api/memories/' + id, { method: 'DELETE' });
+            loadMemories();
+        }
 
-/* --- Helpers --- */
-function esc(s) {
-  const d = document.createElement('div');
-  d.textContent = s ?? '';
-  return d.innerHTML;
-}
-function emptyCell() { return '<span class="empty">\\u2014</span>'; }
-function fmtDate(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
+        categoryEl.addEventListener('change', loadMemories);
+        sortEl.addEventListener('change', loadMemories);
 
-/* --- Init --- */
-loadMemories();
-</script>
-</body>
-</html>
-"""
+        function esc(s) {
+            const d = document.createElement('div');
+            d.textContent = s ?? '';
+            return d.innerHTML;
+        }
+
+        function fmtDate(iso) {
+            if (!iso) return '';
+            const d = new Date(iso);
+            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        }
+
+        loadMemories();
+    </script>
+
+    <style>
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .badge-family { background: rgba(200, 146, 234, 0.2); color: #c792ea; }
+        .badge-person { background: rgba(130, 170, 255, 0.2); color: #82aaff; }
+        .badge-preference { background: rgba(195, 232, 141, 0.2); color: #c3e88d; }
+        .badge-project { background: rgba(255, 203, 107, 0.2); color: #ffcb6b; }
+        .badge-technical { background: rgba(137, 221, 255, 0.2); color: #89ddff; }
+        .badge-event { background: rgba(128, 203, 196, 0.2); color: #80cbc4; }
+        .badge-recurring_event { background: rgba(255, 83, 112, 0.2); color: #ff5370; }
+        .badge-fact { background: rgba(240, 230, 140, 0.2); color: #f0e68c; }
+
+        .content-cell { max-width: 500px; line-height: 1.4; }
+        .score { font-variant-numeric: tabular-nums; color: var(--text-muted); }
+        .date { white-space: nowrap; color: var(--text-faint); font-size: 0.8rem; }
+
+        @media (max-width: 768px) {
+            .hide-mobile { display: none; }
+            .content-cell { max-width: 250px; }
+        }
+    </style>
+    '''
+
+    return render_html_page("Memories", page_content, extra_scripts=scripts)
+
+
+MEMORIES_PAGE_HTML = get_memories_page_html()

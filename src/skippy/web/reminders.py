@@ -6,6 +6,7 @@ from fastapi.responses import HTMLResponse
 import psycopg
 
 from skippy.config import settings
+from .shared_ui import render_html_page, render_page_header, render_section
 
 logger = logging.getLogger("skippy")
 router = APIRouter()
@@ -128,203 +129,38 @@ async def reminders_page():
     return REMINDERS_HTML
 
 
-REMINDERS_HTML = """<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reminders - Skippy</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+def get_reminders_html() -> str:
+    """Generate reminders page using shared design system."""
 
-        body {
-            background: #0a0d17;
-            color: #e0e0e0;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            padding: 1rem;
-        }
+    page_content = render_page_header(
+        "🔔 Event Reminders",
+        "Manage upcoming event reminders and notifications"
+    )
 
-        nav {
-            background: #1a1d27;
-            padding: 1rem 0;
-            margin-bottom: 2rem;
-            border-bottom: 1px solid #333;
-        }
+    # Pending reminders section
+    pending_html = '''
+        <div id="pendingReminders"></div>'''
 
-        nav a {
-            color: #7eb8ff;
-            text-decoration: none;
-            margin: 0 1.5rem;
-        }
+    # All reminders section
+    all_reminders_html = '''
+        <table style="width: 100%; border-collapse: collapse; margin-top: var(--spacing-12);">
+            <thead>
+                <tr>
+                    <th style="background: var(--bg-tertiary); color: var(--accent-blue); padding: var(--spacing-8); text-align: left; border-bottom: 1px solid var(--border-color);">Event</th>
+                    <th style="background: var(--bg-tertiary); color: var(--accent-blue); padding: var(--spacing-8); text-align: left; border-bottom: 1px solid var(--border-color);">Event Time</th>
+                    <th style="background: var(--bg-tertiary); color: var(--accent-blue); padding: var(--spacing-8); text-align: left; border-bottom: 1px solid var(--border-color);">Reminded At</th>
+                    <th style="background: var(--bg-tertiary); color: var(--accent-blue); padding: var(--spacing-8); text-align: left; border-bottom: 1px solid var(--border-color);">Status</th>
+                    <th style="background: var(--bg-tertiary); color: var(--accent-blue); padding: var(--spacing-8); text-align: left; border-bottom: 1px solid var(--border-color);">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="remindersTable"></tbody>
+        </table>'''
 
-        nav a:hover {
-            color: #fff;
-        }
+    # Combine into sections
+    page_content += render_section("⚡ Pending Reminders", pending_html)
+    page_content += render_section("📋 All Reminders", all_reminders_html)
 
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-
-        h1 {
-            font-size: 2rem;
-            color: #fff;
-            margin-bottom: 2rem;
-        }
-
-        h2 {
-            color: #fbbc04;
-            margin: 2rem 0 1rem 0;
-            font-size: 1.3rem;
-        }
-
-        .section {
-            background: #1a1d27;
-            border: 1px solid #333;
-            border-radius: 8px;
-            padding: 1.5rem;
-            margin-bottom: 2rem;
-        }
-
-        .reminder-card {
-            background: #0a0d17;
-            border: 1px solid #333;
-            border-radius: 6px;
-            padding: 1rem;
-            margin-bottom: 1rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .reminder-info {
-            flex: 1;
-        }
-
-        .reminder-event {
-            font-weight: bold;
-            color: #fff;
-            margin-bottom: 0.5rem;
-        }
-
-        .reminder-time {
-            color: #7eb8ff;
-            font-size: 0.9rem;
-        }
-
-        .reminder-actions {
-            display: flex;
-            gap: 0.5rem;
-        }
-
-        .btn {
-            padding: 0.5rem 1rem;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 0.9rem;
-        }
-
-        .btn-acknowledge {
-            background: #48bb78;
-            color: white;
-        }
-
-        .btn-snooze {
-            background: #fbbc04;
-            color: #000;
-        }
-
-        .btn-delete {
-            background: #f56565;
-            color: white;
-        }
-
-        .btn:hover {
-            opacity: 0.8;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 1rem;
-        }
-
-        th {
-            background: #0a0d17;
-            color: #7eb8ff;
-            padding: 1rem;
-            text-align: left;
-            border-bottom: 1px solid #333;
-        }
-
-        td {
-            padding: 1rem;
-            border-bottom: 1px solid #333;
-        }
-
-        tr:hover {
-            background: #0a0d17;
-        }
-
-        .status-pending {
-            color: #fbbc04;
-        }
-
-        .status-acknowledged {
-            color: #48bb78;
-        }
-
-        .status-snoozed {
-            color: #4299e1;
-        }
-
-        .empty-state {
-            text-align: center;
-            color: #666;
-            padding: 2rem;
-        }
-    </style>
-</head>
-<body>
-    <nav>
-        <a href="/">← Back to Dashboard</a>
-        <a href="/memories">Memories</a>
-        <a href="/people">People</a>
-        <a href="/tasks">Tasks</a>
-        <a href="/calendar">Calendar</a>
-        <a href="/scheduled">Scheduled</a>
-    </nav>
-
-    <div class="container">
-        <h1>🔔 Event Reminders</h1>
-
-        <div class="section">
-            <h2>⚡ Pending Reminders</h2>
-            <div id="pendingReminders"></div>
-        </div>
-
-        <div class="section">
-            <h2>📋 All Reminders</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Event</th>
-                        <th>Event Time</th>
-                        <th>Reminded At</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="remindersTable"></tbody>
-            </table>
-        </div>
-    </div>
-
+    scripts = '''
     <script>
         function formatDate(dateStr) {
             if (!dateStr) return '';
@@ -339,19 +175,19 @@ REMINDERS_HTML = """<!DOCTYPE html>
                 const container = document.getElementById('pendingReminders');
 
                 if (!reminders || reminders.length === 0) {
-                    container.innerHTML = '<div class="empty-state">No pending reminders</div>';
+                    container.innerHTML = '<div class="text-center text-muted" style="padding: var(--spacing-12);">No pending reminders</div>';
                     return;
                 }
 
                 container.innerHTML = reminders.map(r => `
-                    <div class="reminder-card">
-                        <div class="reminder-info">
-                            <div class="reminder-event">${r.event_summary}</div>
-                            <div class="reminder-time">Event: ${formatDate(r.event_start)}</div>
+                    <div style="background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: var(--spacing-8); margin-bottom: var(--spacing-8); display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="font-weight: 600; color: var(--text-main); margin-bottom: var(--spacing-4);">${r.event_summary}</div>
+                            <div style="color: var(--accent-blue); font-size: 0.9rem;">Event: ${formatDate(r.event_start)}</div>
                         </div>
-                        <div class="reminder-actions">
-                            <button class="btn btn-acknowledge" onclick="acknowledgeReminder(${r.reminder_id})">✓ Acknowledge</button>
-                            <button class="btn btn-snooze" onclick="snoozeReminder(${r.reminder_id}, 15)">⏱ Snooze 15m</button>
+                        <div style="display: flex; gap: var(--spacing-4);">
+                            <button class="btn btn-primary" onclick="acknowledgeReminder(${r.reminder_id})">✓ Acknowledge</button>
+                            <button class="btn btn-secondary" onclick="snoozeReminder(${r.reminder_id}, 15)">⏱ Snooze 15m</button>
                         </div>
                     </div>
                 `).join('');
@@ -367,19 +203,19 @@ REMINDERS_HTML = """<!DOCTYPE html>
                 const tbody = document.getElementById('remindersTable');
 
                 if (!reminders || reminders.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No reminders</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: var(--spacing-12);">No reminders</td></tr>';
                     return;
                 }
 
                 tbody.innerHTML = reminders.map(r => `
-                    <tr>
-                        <td>${r.event_summary}</td>
-                        <td>${formatDate(r.event_start)}</td>
-                        <td>${formatDate(r.reminded_at)}</td>
-                        <td><span class="status-${r.status}">${r.status}</span></td>
-                        <td>
-                            ${r.status === 'pending' ? `<button class="btn btn-acknowledge" onclick="acknowledgeReminder(${r.reminder_id})">Acknowledge</button>` : ''}
-                            <button class="btn btn-delete" onclick="deleteReminder(${r.reminder_id})">Delete</button>
+                    <tr style="border-bottom: 1px solid var(--border-color);">
+                        <td style="padding: var(--spacing-8); color: var(--text-main);">${r.event_summary}</td>
+                        <td style="padding: var(--spacing-8); color: var(--text-main);">${formatDate(r.event_start)}</td>
+                        <td style="padding: var(--spacing-8); color: var(--text-main);">${formatDate(r.reminded_at)}</td>
+                        <td style="padding: var(--spacing-8);"><span style="color: ${r.status === 'pending' ? 'var(--accent-blue)' : r.status === 'acknowledged' ? '#48bb78' : '#4299e1'};\">${r.status}</span></td>
+                        <td style="padding: var(--spacing-8);">
+                            ${r.status === 'pending' ? `<button class="btn btn-primary" onclick="acknowledgeReminder(${r.reminder_id})" style="margin-right: var(--spacing-4);">Acknowledge</button>` : ''}
+                            <button class="btn btn-danger" onclick="deleteReminder(${r.reminder_id})">Delete</button>
                         </td>
                     </tr>
                 `).join('');
@@ -413,6 +249,9 @@ REMINDERS_HTML = """<!DOCTYPE html>
         loadPendingReminders();
         loadAllReminders();
     </script>
-</body>
-</html>
-"""
+    '''
+
+    return render_html_page("Event Reminders", page_content, extra_scripts=scripts)
+
+
+REMINDERS_HTML = get_reminders_html()
