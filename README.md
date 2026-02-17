@@ -65,7 +65,7 @@ An AI personal assistant with long-term semantic memory, built with LangGraph, F
 | SMS | Twilio |
 | Google APIs | Calendar, Gmail, Contacts |
 | Telegram | Telegram Bot API (long polling) |
-| Web Search | SearXNG (self-hosted metasearch) |
+| Web Search | Tavily API (real-time web search) |
 | Deployment | Docker Compose |
 
 ## Tools (~43 total)
@@ -79,7 +79,7 @@ An AI personal assistant with long-term semantic memory, built with LangGraph, F
 | `people` | 8 | Structured people database CRUD + fuzzy search + identity management |
 | `contact_sync` | 1 | Google Contacts → People table sync (scheduled + on-demand) |
 | `telegram` | 2 | Receive messages via polling, send notifications |
-| `web_search` | 2 | Search web + news via SearXNG |
+| `tavily` | 1 | Web search via Tavily API (real-time information) |
 | `tasks` | 11 | Task management (CRUD, workflow, priority scoring, scheduling) |
 | `communication` | 2 | Send notifications via Telegram + SMS |
 
@@ -149,9 +149,10 @@ Interactive web dashboard with comprehensive features:
     │   ├── google_contacts.py      # Google Contacts CRUD
     │   ├── scheduler.py            # Task & reminder tools
     │   ├── people.py               # Structured people database + fuzzy dedup
-    │   ├── web_search.py           # SearXNG integration
-    │   ├── communication.py        # Send notifications
+    │   ├── tavily.py               # Tavily web search integration
+    │   ├── home_assistant.py       # Home Assistant notifications
     │   ├── tasks.py                # Task management
+    │   ├── telegram.py             # Telegram bot + notifications
     │   └── testing.py              # Run test suite + email results
     └── web/
         ├── main.py                 # Router registration
@@ -172,7 +173,7 @@ Interactive web dashboard with comprehensive features:
 - **Google Cloud** service account (Calendar) + OAuth2 credentials (Gmail/Contacts) — optional
 - **Twilio** account (SMS) — optional
 - **Home Assistant** instance (for voice integration via Wyoming) — optional
-- **SearXNG** instance (self-hosted metasearch for web search) — optional
+- **Tavily API key** (for web search) — optional
 
 ## Deployment Guide
 
@@ -387,7 +388,8 @@ All configuration is via environment variables (`.env` file):
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | Path to service account JSON | empty |
 | `GOOGLE_OAUTH_CLIENT_JSON` | Path to OAuth2 client credentials | empty |
 | `GOOGLE_OAUTH_TOKEN_JSON` | Path to OAuth2 token | empty |
-| `SEARXNG_BASE_URL` | SearXNG instance URL | `http://searxng:8080` |
+| `TAVILY_API_KEY` | Tavily API key for web search | empty |
+| `TAVILY_API_BASE` | Tavily API base URL | `https://api.tavily.com` |
 | `LLM_MODEL` | OpenAI model for conversation | `gpt-4o-mini` |
 | `EMBEDDING_MODEL` | OpenAI model for embeddings | `text-embedding-3-small` |
 | `MORNING_BRIEFING_TIME` | Morning briefing time (HH:MM) | `07:00` |

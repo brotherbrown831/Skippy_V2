@@ -43,10 +43,10 @@
 - OAuth2 consent flow automation (`scripts/google_oauth.py`)
 
 ✅ **Web Search Integration:**
-- SearXNG metasearch (aggregates DuckDuckGo/Google/Bing)
-- Two tools: `search_web()` and `search_news()`
-- Self-hosted Docker service (optional feature, graceful degradation)
-- Enhanced morning briefing to include search results
+- Tavily API for real-time web search
+- One tool: `search_web()` with Tavily backend
+- Optional feature with graceful degradation if API key not configured
+- Returns formatted results with titles, snippets, and URLs
 
 ✅ **Dashboard Phase 2 (6 Advanced Features):**
 - **Recent Activity Timeline**: Unified event log (Memories, People, Tasks) with emoji icons
@@ -394,7 +394,7 @@ See [CLAUDE.md](CLAUDE.md) for critical instructions on database preservation. W
 
 **Refocus as Personal Assistant** — Removed 17 HA device control tools, entity management system, 2,921 lines of code. Consolidated around core functions: memories, tasks, communication.
 
-**SearXNG Web Search** — Integrated self-hosted metasearch with web + news tools, optional feature with graceful degradation.
+**Tavily Web Search** — Integrated Tavily API for real-time web search, optional feature with graceful degradation if API key not configured.
 
 ---
 
