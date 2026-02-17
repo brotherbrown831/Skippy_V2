@@ -4,7 +4,7 @@ import json
 import logging
 import re
 
-import psycopg
+from skippy.db_utils import get_db_connection
 from langchain_core.tools import tool
 
 from skippy.config import settings
@@ -120,9 +120,7 @@ async def sync_google_contacts_to_people() -> dict:
     auto_merged = 0
     suggestions = []
 
-    async with await psycopg.AsyncConnection.connect(
-        settings.database_url, autocommit=True
-    ) as conn:
+    async with get_db_connection() as conn:
         async with conn.cursor() as cur:
             for person in contacts:
                 names = person.get("names", [])

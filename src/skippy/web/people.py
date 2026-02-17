@@ -2,7 +2,7 @@ import json
 import logging
 from datetime import datetime
 
-import psycopg
+from skippy.db_utils import get_db_connection
 from fastapi import APIRouter, Body
 from fastapi.responses import HTMLResponse, RedirectResponse
 
@@ -18,9 +18,7 @@ router = APIRouter()
 async def get_people():
     """Return all people as JSON."""
     try:
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute("""
                     SELECT
@@ -44,9 +42,7 @@ async def get_people():
 async def delete_person(person_id: int):
     """Delete a person."""
     try:
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute("DELETE FROM people WHERE person_id = %s", (person_id,))
         return {"ok": True}
@@ -59,9 +55,7 @@ async def delete_person(person_id: int):
 async def get_person_profile(person_id: int):
     """Get detailed person profile with memories."""
     try:
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 # Get person details
                 await cur.execute("""
@@ -108,9 +102,7 @@ async def get_person_profile(person_id: int):
 async def update_person(person_id: int, data: dict = Body(...)):
     """Update person details."""
     try:
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 updates = []
                 values = []
@@ -149,9 +141,7 @@ async def create_person(data: dict = Body(...)):
         if not canonical_name:
             return {"ok": False, "error": "Name is required"}
 
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """

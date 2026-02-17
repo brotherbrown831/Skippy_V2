@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 
 import httpx
-import psycopg
+from skippy.db_utils import get_db_connection
 from langchain_core.tools import tool
 
 from skippy.config import settings
@@ -104,9 +104,7 @@ def send_telegram_message_with_reminder_buttons(
         # Create reminder record
         reminder_id = None
         try:
-            async with await psycopg.AsyncConnection.connect(
-                settings.database_url, autocommit=True
-            ) as conn:
+            async with get_db_connection() as conn:
                 async with conn.cursor() as cur:
                     await cur.execute(
                         "INSERT INTO reminder_acknowledgments "

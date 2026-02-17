@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import json
 
-import psycopg
+from skippy.db_utils import get_db_connection
 from langchain_core.tools import tool
 
 from skippy.config import settings
@@ -167,9 +167,7 @@ async def create_task(
         )
 
         # Insert task
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -234,7 +232,7 @@ async def list_tasks(
         limit: Max results to return (default: 20)
     """
     try:
-        async with await psycopg.AsyncConnection.connect(settings.database_url) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 # Build WHERE clause
                 where_conditions = ["user_id = 'nolan'"]
@@ -320,7 +318,7 @@ async def get_task(task_id: int) -> str:
         task_id: The task ID
     """
     try:
-        async with await psycopg.AsyncConnection.connect(settings.database_url) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -462,7 +460,7 @@ async def update_task(
         updates.append("updated_at = NOW()")
 
         # Get current task to recalculate urgency
-        async with await psycopg.AsyncConnection.connect(settings.database_url) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 # Get current values
                 await cur.execute(
@@ -523,9 +521,7 @@ async def complete_task(task_id: int, notes: str = "") -> str:
         notes: Optional completion notes
     """
     try:
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 # Get task title for logging
                 await cur.execute(
@@ -588,9 +584,7 @@ async def defer_task(task_id: int, defer_until: str) -> str:
         if not parsed_defer:
             return f"Could not parse defer date: {defer_until}"
 
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 # Get task for logging
                 await cur.execute(
@@ -636,9 +630,7 @@ async def promote_task_from_backlog(task_id: int) -> str:
         task_id: Backlog task ID
     """
     try:
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 # Get task for logging
                 await cur.execute(
@@ -688,9 +680,7 @@ async def archive_task(task_id: int) -> str:
         task_id: Task ID
     """
     try:
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 # Get task for logging
                 await cur.execute(
@@ -742,7 +732,7 @@ async def what_should_i_do_now(
         context: Where you are (e.g., "@computer", "@home")
     """
     try:
-        async with await psycopg.AsyncConnection.connect(settings.database_url) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 # Fetch active tasks (not deferred, not backlog, not done/archived)
                 where_clause = """
@@ -862,9 +852,7 @@ async def move_task_to_next_up(task_id: int) -> str:
         task_id: Task ID
     """
     try:
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 # Get task for logging
                 await cur.execute(
@@ -913,7 +901,7 @@ async def search_tasks(query: str, limit: int = 10) -> str:
     try:
         search_term = f"%{query}%"
 
-        async with await psycopg.AsyncConnection.connect(settings.database_url) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """

@@ -16,6 +16,7 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from skippy.agent.graph import build_graph
 from skippy.config import settings
 from skippy.db_init import initialize_schema
+from skippy.db_utils import set_db_pool
 from skippy.scheduler import start_scheduler, stop_scheduler
 from skippy.telegram import start_telegram, stop_telegram
 from skippy.web.home import router as home_router
@@ -102,18 +103,24 @@ async def lifespan(app: FastAPI):
         open=False,
     )
     await app.state.pool.open()
+    # Make the pool globally available for background tasks and tools
+    set_db_pool(app.state.pool)
     await initialize_schema()
-    async with AsyncPostgresSaver.from_conn_string(settings.database_url) as checkpointer:
-        await checkpointer.setup()
-        # Build agent graph with all tools (voice/chat/telegram use full access)
-        app.state.graph = await build_graph(checkpointer, tool_modules=None)
-        logger.info("Skippy agent ready")
-        await start_scheduler(app)
-        await start_telegram(app)
-        yield
-        await stop_telegram(app)
-        await stop_scheduler(app)
-    # Shutdown
+    checkpointer_cm = AsyncPostgresSaver.from_conn_string(settings.database_url)
+    checkpointer = await checkpointer_cm.__aenter__()
+    await checkpointer.setup()
+    app.state.checkpointer = checkpointer
+    app.state._checkpointer_cm = checkpointer_cm
+    # Build agent graph with all tools (voice/chat/telegram use full access)
+    app.state.graph = await build_graph(checkpointer, tool_modules=None)
+    logger.info("Skippy agent ready")
+    await start_scheduler(app)
+    await start_telegram(app)
+    yield
+    await stop_telegram(app)
+    await stop_scheduler(app)
+    # Shutdown: clean up checkpointer and pool
+    await app.state._checkpointer_cm.__aexit__(None, None, None)
     await app.state.pool.close()
 
 

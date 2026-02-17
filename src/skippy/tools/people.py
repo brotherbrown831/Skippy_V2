@@ -6,7 +6,7 @@ import math
 import re
 from datetime import datetime, timezone
 
-import psycopg
+from skippy.db_utils import get_db_connection
 from langchain_core.tools import tool
 from rapidfuzz import fuzz, process
 
@@ -60,9 +60,7 @@ async def _resolve_person_identity(
     query_lower = query.strip().lower()
 
     try:
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 # Step 1: Exact phone/email match (highest priority)
                 if query:
@@ -228,9 +226,7 @@ async def _update_person_importance(person_id: int) -> None:
       importance_score = base_score + recency_bonus
     """
     try:
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 # Get current values
                 await cur.execute(
@@ -361,9 +357,7 @@ async def add_person(
             params.append(person_id)
 
             if len(updates) > 1:  # More than just updated_at
-                async with await psycopg.AsyncConnection.connect(
-                    settings.database_url, autocommit=True
-                ) as conn:
+                async with get_db_connection() as conn:
                     async with conn.cursor() as cur:
                         await cur.execute(
                             f"""
@@ -387,9 +381,7 @@ async def add_person(
 
         else:
             # Create new person
-            async with await psycopg.AsyncConnection.connect(
-                settings.database_url, autocommit=True
-            ) as conn:
+            async with get_db_connection() as conn:
                 async with conn.cursor() as cur:
                     await cur.execute(
                         """
@@ -447,9 +439,7 @@ async def get_person(name: str) -> str:
             return f"No one named '{name}' in the people database."
 
         # Step 2: Fetch person details
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -514,9 +504,7 @@ async def search_people(query: str) -> str:
     """
     pattern = f"%{query}%"
     try:
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -620,9 +608,7 @@ async def update_person(
         params.append(person_id)
 
         # Step 3: Execute update
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     f"""
@@ -660,9 +646,7 @@ async def list_people() -> str:
     """List all people in the structured database. Use when the user asks
     "who do you know about?" or wants to see all stored contacts."""
     try:
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -727,9 +711,7 @@ async def merge_people(
             return "Cannot merge a person with themselves."
 
         # Step 2: Fetch both records
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -869,9 +851,7 @@ async def add_person_alias(person_name: str, alias: str) -> str:
             return f"Could not find person '{person_name}' to add alias for."
 
         # Step 2: Add alias (if not already present)
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 # Get current aliases
                 await cur.execute(
@@ -930,9 +910,7 @@ async def remove_person_alias(person_name: str, alias: str) -> str:
             return f"Could not find person '{person_name}' to remove alias from."
 
         # Step 2: Remove alias
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 # Get current aliases
                 await cur.execute(
@@ -989,9 +967,7 @@ async def find_duplicate_people(threshold: int = 70) -> str:
     """
     try:
         # Fetch all people
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -1104,9 +1080,7 @@ async def search_people_fuzzy(query: str, limit: int = 10) -> str:
     """
     try:
         # Fetch all people
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -1228,9 +1202,7 @@ async def get_person_memories(name: str, limit: int = 20) -> str:
             return f"No one named '{name}' found in the people database."
 
         # Step 2: Fetch all memories for this person
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -1308,9 +1280,7 @@ async def link_memory_to_person(memory_id: int, person_name: str) -> str:
             return f"No one named '{person_name}' found."
 
         # Update memory
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -1351,9 +1321,7 @@ async def unlink_memory_from_person(memory_id: int) -> str:
         memory_id: ID of the memory to unlink.
     """
     try:
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """

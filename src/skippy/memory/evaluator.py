@@ -2,13 +2,40 @@ import json
 import logging
 
 from openai import AsyncOpenAI
-import psycopg
+from skippy.db_utils import get_db_connection
 
 from skippy.agent.prompts import MEMORY_EVALUATION_PROMPT, PERSON_EXTRACTION_PROMPT
 from skippy.config import settings
 from skippy.utils.activity_logger import log_activity
 
 logger = logging.getLogger("skippy")
+
+
+async def evaluate_and_store_safe(
+    conversation_history: list[dict],
+    user_message: str,
+    assistant_message: str,
+    conversation_id: str,
+    user_id: str = "nolan",
+) -> None:
+    """Safe wrapper for evaluate_and_store with error handling.
+
+    This is designed to be used with asyncio.create_task() for fire-and-forget
+    execution. Ensures errors are logged and don't crash the task.
+    """
+    try:
+        await evaluate_and_store(
+            conversation_history=conversation_history,
+            user_message=user_message,
+            assistant_message=assistant_message,
+            conversation_id=conversation_id,
+            user_id=user_id,
+        )
+    except Exception:
+        logger.exception(
+            "Memory evaluation failed for conversation %s - memory was not stored",
+            conversation_id,
+        )
 
 
 async def evaluate_and_store(
@@ -68,9 +95,7 @@ async def evaluate_and_store(
         embedding_str = json.dumps(embedding)
 
         # Step 3: Check for similar existing memories
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 # Find the most similar existing memory
                 await cur.execute(
@@ -240,9 +265,7 @@ async def _extract_and_store_person(
             pass
 
         # Step 2: Upsert person
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 if person_id:
                     # Update existing
@@ -411,9 +434,7 @@ async def _link_existing_memories_to_person(
     Returns:
         Number of memories linked
     """
-    async with await psycopg.AsyncConnection.connect(
-        settings.database_url, autocommit=True
-    ) as conn:
+    async with get_db_connection() as conn:
         async with conn.cursor() as cur:
             # Get person's aliases
             await cur.execute(

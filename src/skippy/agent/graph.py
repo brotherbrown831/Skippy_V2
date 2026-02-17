@@ -18,7 +18,7 @@ from skippy.agent.prompts import (
 )
 from skippy.agent.state import AgentState
 from skippy.config import settings
-from skippy.memory.evaluator import evaluate_and_store
+from skippy.memory.evaluator import evaluate_and_store_safe
 from skippy.memory.retriever import retrieve_memories
 from skippy.tools import collect_tools
 
@@ -80,8 +80,9 @@ async def evaluate_memory_node(state: AgentState, config: RunnableConfig) -> dic
         history.append({"role": role, "content": msg.content})
 
     # Fire and forget — don't block the response
+    # Use safe wrapper to ensure errors are logged and don't crash the task
     asyncio.create_task(
-        evaluate_and_store(
+        evaluate_and_store_safe(
             conversation_history=history,
             user_message=user_message,
             assistant_message=assistant_message,

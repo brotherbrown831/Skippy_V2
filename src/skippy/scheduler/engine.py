@@ -63,11 +63,10 @@ def _resolve_func(func_path: str):
     return getattr(module, func_name)
 
 
-def _run_async_func(func_path: str):
-    """Wrapper that resolves and runs an async function from APScheduler."""
+async def _run_async_func(func_path: str):
+    """Async wrapper that resolves and runs an async function from APScheduler."""
     func = _resolve_func(func_path)
-    loop = asyncio.get_event_loop()
-    return loop.create_task(func())
+    await func()
 
 
 def _register_predefined_routines(scheduler: AsyncIOScheduler) -> int:

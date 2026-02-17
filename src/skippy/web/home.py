@@ -3,11 +3,11 @@ import json
 import logging
 from datetime import datetime, timezone
 
-import psycopg
 from fastapi import APIRouter, Body
 from fastapi.responses import HTMLResponse
 
 from skippy.config import settings
+from skippy.db_utils import get_db_connection
 
 logger = logging.getLogger("skippy")
 
@@ -114,9 +114,7 @@ async def homepage():
 async def get_dashboard_stats():
     """Return quick stats for dashboard cards."""
     try:
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 # Get memory stats
                 await cur.execute(
@@ -166,7 +164,7 @@ async def get_dashboard_stats():
 async def get_recent_activity():
     """Return the last 10 activities across all subsystems."""
     try:
-        async with await psycopg.AsyncConnection.connect(settings.database_url) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -216,9 +214,7 @@ async def create_memory_api(data: dict = Body(...)):
         embedding_str = json.dumps(embedding)
 
         # Store memory
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -263,9 +259,7 @@ async def create_person_api(data: dict = Body(...)):
             return {"ok": False, "error": "Name is required"}
 
         # Create person
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -302,7 +296,7 @@ async def create_person_api(data: dict = Body(...)):
 async def get_system_health():
     """Return system health metrics."""
     try:
-        async with await psycopg.AsyncConnection.connect(settings.database_url) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 # Database size
                 await cur.execute("SELECT pg_database_size(current_database())")
@@ -361,7 +355,7 @@ async def global_search(data: dict = Body(...)):
     pattern = f"%{query}%"
 
     try:
-        async with await psycopg.AsyncConnection.connect(settings.database_url) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 # Search memories
                 await cur.execute(
@@ -420,7 +414,7 @@ async def global_search(data: dict = Body(...)):
 async def get_user_preferences():
     """Get user preferences."""
     try:
-        async with await psycopg.AsyncConnection.connect(settings.database_url) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -459,9 +453,7 @@ async def get_user_preferences():
 async def update_user_preferences(data: dict = Body(...)):
     """Update user preferences."""
     try:
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 updates = []
                 params = []
@@ -506,7 +498,7 @@ async def update_user_preferences(data: dict = Body(...)):
 async def get_chart_data():
     """Return data for dashboard charts."""
     try:
-        async with await psycopg.AsyncConnection.connect(settings.database_url) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 # Chart 1: Memory growth over last 30 days
                 await cur.execute(
@@ -590,7 +582,7 @@ async def get_chart_data():
 async def get_tasks_today():
     """Return tasks for Today panel: active tasks not deferred."""
     try:
-        async with await psycopg.AsyncConnection.connect(settings.database_url) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -625,7 +617,7 @@ async def get_tasks_today():
 async def get_tasks_backlog():
     """Return backlog tasks sorted by backlog_rank."""
     try:
-        async with await psycopg.AsyncConnection.connect(settings.database_url) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -688,9 +680,7 @@ async def create_task_api(data: dict = Body(...)):
         urgency_score = float(priority_weights.get(priority, 0))
 
         # Insert task
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -737,9 +727,7 @@ async def complete_task_api(task_id: int):
     try:
         from skippy.utils.activity_logger import log_activity
 
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -778,9 +766,7 @@ async def promote_task_api(task_id: int):
     try:
         from skippy.utils.activity_logger import log_activity
 
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -817,7 +803,7 @@ async def promote_task_api(task_id: int):
 async def get_task_stats():
     """Return task statistics for System Health modal and cards."""
     try:
-        async with await psycopg.AsyncConnection.connect(settings.database_url) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 # Total active tasks
                 await cur.execute(
@@ -915,7 +901,7 @@ async def get_task_stats():
 async def get_task_chart_data():
     """Return data for task completion chart (last 7 days)."""
     try:
-        async with await psycopg.AsyncConnection.connect(settings.database_url) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -966,9 +952,7 @@ async def update_task_api(task_id: int, data: dict = Body(...)):
         if not status:
             return {"ok": False, "error": "Status is required"}
 
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -1018,9 +1002,7 @@ async def defer_task_api(task_id: int, data: dict = Body(...)):
         except (ImportError, ValueError, TypeError):
             return {"ok": False, "error": "Invalid date format"}
 
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
@@ -1059,9 +1041,7 @@ async def delete_task_api(task_id: int):
     try:
         from skippy.utils.activity_logger import log_activity
 
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """

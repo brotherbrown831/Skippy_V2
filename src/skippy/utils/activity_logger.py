@@ -1,7 +1,7 @@
 """Activity logging utility for unified event tracking."""
 import json
 import logging
-import psycopg
+from skippy.db_utils import get_db_connection
 
 from skippy.config import settings
 
@@ -27,9 +27,7 @@ async def log_activity(
         user_id: User performing the action (default: 'nolan')
     """
     try:
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """

@@ -3,7 +3,7 @@
 import logging
 from fastapi import APIRouter, Body
 from fastapi.responses import HTMLResponse
-import psycopg
+from skippy.db_utils import get_db_connection
 
 from skippy.config import settings
 from .shared_ui import render_html_page, render_page_header, render_section
@@ -16,9 +16,7 @@ router = APIRouter()
 async def get_reminders():
     """Get all reminders."""
     try:
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute("""
                     SELECT reminder_id, event_id, event_summary, event_start,
@@ -41,9 +39,7 @@ async def get_reminders():
 async def get_pending_reminders():
     """Get pending reminders."""
     try:
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute("""
                     SELECT reminder_id, event_id, event_summary, event_start,
@@ -66,9 +62,7 @@ async def get_pending_reminders():
 async def acknowledge_reminder(reminder_id: int):
     """Mark reminder as acknowledged."""
     try:
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute("""
                     UPDATE reminder_acknowledgments
@@ -88,9 +82,7 @@ async def snooze_reminder(reminder_id: int, data: dict = Body(...)):
     """Snooze reminder for X minutes."""
     minutes = data.get("minutes", 15)
     try:
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute("""
                     UPDATE reminder_acknowledgments
@@ -109,9 +101,7 @@ async def snooze_reminder(reminder_id: int, data: dict = Body(...)):
 async def delete_reminder(reminder_id: int):
     """Delete reminder."""
     try:
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     "DELETE FROM reminder_acknowledgments WHERE reminder_id = %s",

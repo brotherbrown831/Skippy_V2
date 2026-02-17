@@ -4,7 +4,7 @@ import json
 import logging
 from fastapi import APIRouter, Body
 from fastapi.responses import HTMLResponse
-import psycopg
+from skippy.db_utils import get_db_connection
 
 from skippy.config import settings
 from .shared_ui import render_html_page, render_page_header, render_section
@@ -17,9 +17,7 @@ router = APIRouter()
 async def get_scheduled_tasks():
     """Get all scheduled tasks."""
     try:
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute("""
                     SELECT task_id, name, description, schedule_type,
@@ -55,9 +53,7 @@ async def create_scheduled_task_api(data: dict = Body(...)):
 async def toggle_scheduled_task(task_id: str):
     """Enable/disable scheduled task."""
     try:
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute("""
                     UPDATE scheduled_tasks

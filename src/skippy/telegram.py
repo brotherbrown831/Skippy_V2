@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timedelta
 
 import httpx
-import psycopg
+from skippy.db_utils import get_db_connection
 from langchain_core.messages import HumanMessage
 
 from skippy.config import settings
@@ -94,9 +94,7 @@ async def _handle_callback_query(app, client: httpx.AsyncClient, callback: dict)
 
     # Update database based on action
     try:
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 if action == "ack":
                     await cur.execute(

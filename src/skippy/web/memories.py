@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime
 
-import psycopg
+from skippy.db_utils import get_db_connection
 from fastapi import APIRouter, Query
 from fastapi.responses import HTMLResponse
 
@@ -51,9 +51,7 @@ async def get_memories(
     """
 
     try:
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(sql, params)
                 rows = await cur.fetchall()
@@ -80,9 +78,7 @@ async def delete_memory(memory_id: int):
     """Delete a memory by ID."""
     sql = "DELETE FROM semantic_memories WHERE memory_id = %s AND user_id = %s"
     try:
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(sql, (memory_id, "nolan"))
                 if cur.rowcount == 0:

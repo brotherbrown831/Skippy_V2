@@ -1,6 +1,5 @@
 """Scheduled task executor — invokes the Skippy agent graph."""
 
-import asyncio
 import logging
 import time
 from typing import Any
@@ -83,14 +82,6 @@ async def execute_scheduled_task(task_id: str, prompt: str) -> str:
         return f"Error: {e}"
 
 
-def run_scheduled_task(task_id: str, prompt: str) -> None:
-    """Sync wrapper for APScheduler to call — runs the async executor."""
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
-
-    if loop and loop.is_running():
-        loop.create_task(execute_scheduled_task(task_id, prompt))
-    else:
-        asyncio.run(execute_scheduled_task(task_id, prompt))
+async def run_scheduled_task(task_id: str, prompt: str) -> None:
+    """Async entry point for APScheduler — runs directly on the event loop."""
+    await execute_scheduled_task(task_id, prompt)

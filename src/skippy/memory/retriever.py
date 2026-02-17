@@ -2,7 +2,7 @@ import json
 import logging
 
 from openai import AsyncOpenAI
-import psycopg
+from skippy.db_utils import get_db_connection
 
 from skippy.config import settings
 
@@ -54,9 +54,7 @@ async def retrieve_memories(
     """
 
     try:
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(sql, (embedding_str, user_id, threshold, limit))
                 rows = await cur.fetchall()

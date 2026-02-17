@@ -4,7 +4,7 @@ import logging
 import math
 from datetime import datetime, timezone
 
-import psycopg
+from skippy.db_utils import get_db_connection
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
@@ -26,9 +26,7 @@ async def recalculate_people_importance() -> None:
     - importance_score = base_score + recency_bonus
     """
     try:
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 # Fetch all people with mention_count > 0
                 await cur.execute(
@@ -169,9 +167,7 @@ async def check_and_notify_snoozed_reminders() -> None:
     to remind the user and updates the status back to 'pending'.
     """
     try:
-        async with await psycopg.AsyncConnection.connect(
-            settings.database_url, autocommit=True
-        ) as conn:
+        async with get_db_connection() as conn:
             async with conn.cursor() as cur:
                 # Find snoozed reminders that are due to wake up
                 await cur.execute("""
