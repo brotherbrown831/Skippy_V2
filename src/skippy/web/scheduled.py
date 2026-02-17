@@ -86,6 +86,12 @@ def get_scheduled_html() -> str:
         "View and manage your scheduled automation tasks"
     )
 
+    # Navigation controls
+    controls_html = '''
+        <div class="page-controls">
+            <a href="/" class="btn btn-ghost">← Back to Dashboard</a>
+        </div>'''
+
     # Info box
     info_html = '''
         <div style="background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: var(--spacing-8); color: var(--text-muted); font-size: 0.9rem;">
@@ -108,6 +114,7 @@ def get_scheduled_html() -> str:
             <tbody id="tasksTable"></tbody>
         </table>'''
 
+    page_content += controls_html
     page_content += render_section("", info_html)
     page_content += render_section("", tasks_html)
 

@@ -103,6 +103,12 @@ def get_memories_page_html() -> str:
         "Search and manage your semantic memories"
     )
 
+    # Navigation controls
+    nav_html = '''
+        <div class="page-controls">
+            <a href="/" class="btn btn-ghost">← Back to Dashboard</a>
+        </div>'''
+
     controls_html = '''
         <div class="page-controls">
             <select id="category">
@@ -145,6 +151,7 @@ def get_memories_page_html() -> str:
 
     section_html = render_section("Semantic Memories", controls_html + table_html)
 
+    page_content += nav_html
     page_content += section_html
 
     scripts = '''

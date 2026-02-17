@@ -216,6 +216,86 @@ def _to_iso(dt: datetime) -> str:
     return dt.isoformat()
 
 
+def _build_rrule(
+    frequency: str,
+    interval: int = 1,
+    days_of_week: str = "",
+    end_date: str = "",
+    count: int = 0,
+) -> str:
+    """Build an RFC 5545 RRULE string for Google Calendar API.
+
+    Args:
+        frequency: "daily", "weekly", "monthly", or "yearly"
+        interval: Repeat every N periods (default 1). E.g., interval=2 means every 2 weeks.
+        days_of_week: For weekly events, comma-separated days: "Monday,Wednesday,Friday"
+                      or already abbreviated: "MO,WE,FR" (normalized either way)
+        end_date: End recurrence on this date (YYYY-MM-DD format), converted to UNTIL=YYYYMMDD
+        count: Maximum number of occurrences. If set, overrides end_date.
+
+    Returns:
+        RRULE string like "RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR;COUNT=10"
+
+    Raises:
+        ValueError: If frequency is unknown.
+    """
+    # Normalize frequency to uppercase
+    freq_upper = frequency.lower().strip().upper()
+    if freq_upper not in ("DAILY", "WEEKLY", "MONTHLY", "YEARLY"):
+        raise ValueError(
+            f"Invalid frequency '{frequency}'. Must be: daily, weekly, monthly, or yearly"
+        )
+
+    parts = [f"FREQ={freq_upper}"]
+
+    # Add interval if > 1
+    if interval > 1:
+        parts.append(f"INTERVAL={interval}")
+
+    # Normalize days_of_week if provided (for weekly events)
+    if days_of_week:
+        days_map = {
+            "monday": "MO",
+            "tuesday": "TU",
+            "wednesday": "WE",
+            "thursday": "TH",
+            "friday": "FR",
+            "saturday": "SA",
+            "sunday": "SU",
+        }
+
+        # Split by comma and normalize each day
+        day_list = [d.strip() for d in days_of_week.split(",")]
+        normalized_days = []
+        for day in day_list:
+            day_lower = day.lower()
+            if day_lower in days_map:
+                # Full name like "Monday" → "MO"
+                normalized_days.append(days_map[day_lower])
+            elif day.upper() in ("MO", "TU", "WE", "TH", "FR", "SA", "SU"):
+                # Already abbreviated, keep as-is
+                normalized_days.append(day.upper())
+            else:
+                raise ValueError(f"Unrecognized day: '{day}'")
+
+        parts.append(f"BYDAY={','.join(normalized_days)}")
+
+    # Add end date as UNTIL if provided and no count
+    if end_date and count == 0:
+        try:
+            end_dt = datetime.strptime(end_date.strip(), "%Y-%m-%d")
+            until_str = end_dt.strftime("%Y%m%d")
+            parts.append(f"UNTIL={until_str}")
+        except ValueError:
+            raise ValueError(f"Invalid end_date format. Use YYYY-MM-DD, got '{end_date}'")
+
+    # Add count if provided (takes precedence over end_date)
+    if count > 0:
+        parts.append(f"COUNT={count}")
+
+    return "RRULE:" + ";".join(parts)
+
+
 # --- Write tools ---
 
 
@@ -271,6 +351,98 @@ def create_event(
     except Exception as e:
         logger.error("Failed to create event: %s", e)
         return f"Error creating event: {e}"
+
+
+@tool
+def create_recurring_event(
+    title: str,
+    start_date: str,
+    start_time: str,
+    frequency: str,
+    end_time: str = "",
+    description: str = "",
+    location: str = "",
+    interval: int = 1,
+    days_of_week: str = "",
+    end_date: str = "",
+    count: int = 0,
+) -> str:
+    """Create a recurring Google Calendar event. Use this when the user asks to
+    schedule a repeating event like "gym every Monday" or "team meeting every
+    other Thursday".
+
+    Args:
+        title: The event title/summary.
+        start_date: Starting date for the recurrence. Use 'today', 'tomorrow', or 'YYYY-MM-DD'.
+        start_time: Start time like '10pm', '2:30pm', '14:00', or '10:00 AM'.
+        frequency: Recurrence frequency: "daily", "weekly", "monthly", or "yearly".
+        end_time: End time in the same format as start_time. If not provided, defaults to 1 hour after start.
+        description: Optional event description or notes.
+        location: Optional event location.
+        interval: Repeat every N periods. Default 1 (every week, every month, etc).
+                  Example: interval=2 with frequency="weekly" means every 2 weeks.
+        days_of_week: For weekly events, comma-separated days like "Monday,Wednesday,Friday"
+                      or abbreviated "MO,WE,FR". Required for weekly recurrence if you want
+                      specific days; otherwise repeats on the starting day.
+        end_date: Stop recurrence on this date (YYYY-MM-DD format). If omitted, recurs indefinitely.
+        count: Maximum number of occurrences. If set, overrides end_date.
+               Example: count=10 creates exactly 10 occurrences.
+    """
+    try:
+        service = _get_calendar_service()
+
+        start_dt = _resolve_datetime(start_date, start_time)
+        if end_time:
+            end_dt = _resolve_datetime(start_date, end_time)
+        else:
+            end_dt = start_dt + timedelta(hours=1)
+
+        # Build RRULE
+        rrule = _build_rrule(
+            frequency=frequency,
+            interval=interval,
+            days_of_week=days_of_week,
+            end_date=end_date,
+            count=count,
+        )
+
+        event_body = {
+            "summary": title,
+            "start": {"dateTime": _to_iso(start_dt)},
+            "end": {"dateTime": _to_iso(end_dt)},
+            "recurrence": [rrule],
+        }
+        if description:
+            event_body["description"] = description
+        if location:
+            event_body["location"] = location
+
+        created = service.events().insert(
+            calendarId=settings.google_calendar_id,
+            body=event_body,
+        ).execute()
+
+        event_id = created.get("id", "unknown")
+        link = created.get("htmlLink", "")
+        formatted_start = start_dt.strftime("%B %d, %Y at %I:%M %p %Z")
+        freq_label = frequency.lower()
+        suffix = f" (every {interval} {freq_label}s)" if interval > 1 else f" ({freq_label})"
+        if count > 0:
+            suffix += f", {count} occurrences"
+        elif end_date:
+            suffix += f", until {end_date}"
+
+        logger.info(
+            "Recurring calendar event created: id=%s, title='%s', start=%s, rrule=%s",
+            event_id,
+            title,
+            formatted_start,
+            rrule,
+        )
+        return f"Recurring event '{title}' created{suffix}, starting {formatted_start} (id: {event_id}). Link: {link}"
+    except Exception as e:
+        logger.error("Failed to create recurring event: %s", e)
+        return f"Error creating recurring event: {e}"
 
 
 @tool
@@ -367,6 +539,7 @@ def get_tools() -> list:
             get_upcoming_events,
             search_events,
             create_event,
+            create_recurring_event,
             update_event,
             delete_event,
         ]

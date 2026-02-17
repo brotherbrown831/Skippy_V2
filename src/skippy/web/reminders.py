@@ -127,6 +127,12 @@ def get_reminders_html() -> str:
         "Manage upcoming event reminders and notifications"
     )
 
+    # Navigation controls
+    controls_html = '''
+        <div class="page-controls">
+            <a href="/" class="btn btn-ghost">← Back to Dashboard</a>
+        </div>'''
+
     # Pending reminders section
     pending_html = '''
         <div id="pendingReminders"></div>'''
@@ -147,6 +153,7 @@ def get_reminders_html() -> str:
         </table>'''
 
     # Combine into sections
+    page_content += controls_html
     page_content += render_section("⚡ Pending Reminders", pending_html)
     page_content += render_section("📋 All Reminders", all_reminders_html)
 

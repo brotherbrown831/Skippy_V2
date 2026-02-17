@@ -8,6 +8,7 @@ import logging
 
 from skippy.tools.home_assistant import get_tools as _ha_tools
 from skippy.tools.google_calendar import get_tools as _calendar_tools
+from skippy.tools.ics_calendar import get_tools as _ics_tools
 from skippy.tools.scheduler import get_tools as _scheduler_tools
 from skippy.tools.people import get_tools as _people_tools
 from skippy.tools.gmail import get_tools as _gmail_tools
@@ -34,6 +35,7 @@ def collect_tools(include_modules: list[str] | None = None) -> list:
     sources = [
         ("home_assistant", _ha_tools),
         ("google_calendar", _calendar_tools),
+        ("ics_calendar", _ics_tools),
         ("scheduler", _scheduler_tools),
         ("people", _people_tools),
         ("gmail", _gmail_tools),

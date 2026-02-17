@@ -70,6 +70,12 @@ def get_calendar_html() -> str:
         "View and manage your Google Calendar events"
     )
 
+    # Navigation controls
+    controls_html = '''
+        <div class="page-controls">
+            <a href="/" class="btn btn-ghost">← Back to Dashboard</a>
+        </div>'''
+
     # Today's events panel
     today_html = '''
         <div class="page-controls">
@@ -89,6 +95,7 @@ def get_calendar_html() -> str:
         </div>'''
 
     # Combine into sections
+    page_content += controls_html
     page_content += render_section("Today", today_html)
     page_content += render_section("Upcoming Events", upcoming_html)
 

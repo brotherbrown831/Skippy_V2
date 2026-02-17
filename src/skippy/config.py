@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     google_calendar_id: str = ""
     google_service_account_json: str = ""
 
+    # ICS Calendar Feed (optional, any public .ics URL)
+    ics_calendar_url: str = ""
+    ics_calendar_name: str = "Calendar"
+
     # Google OAuth2 (Gmail + Contacts)
     google_oauth_client_json: str = ""
     google_oauth_token_json: str = ""

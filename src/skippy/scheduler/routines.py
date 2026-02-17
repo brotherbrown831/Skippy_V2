@@ -108,7 +108,8 @@ def _build_predefined_routines() -> list:
                 "prompt": (
                     "Check today's calendar events and tasks, then send a Telegram message to Nolan "
                     "with a brief summary. Include: "
-                    "1. Calendar events for today (times and titles). "
+                    "1. Calendar events for today (times and titles) — check BOTH get_todays_events (Google Calendar) "
+                    "   AND get_ics_todays_events (TeamSnap sports schedule) for a complete view. "
                     "2. Top 3 priority tasks for today (from tasks with high urgency_score or due today). "
                     "3. Number of overdue tasks (if any - nag about them). "
                     "4. One backlog item worth considering (highest backlog_rank if available). "
@@ -144,7 +145,8 @@ def _build_predefined_routines() -> list:
             "task_id": "upcoming-event-check",
             "name": "Upcoming Event Reminder",
             "prompt": (
-                "Ping: Check for calendar events in next 30 min. Send Telegram reminders via "
+                "Ping: Check for calendar events in next 30 min using BOTH get_todays_events (Google Calendar) "
+                "AND get_ics_upcoming_events(days=1) (TeamSnap sports schedule). Send Telegram reminders via "
                 "send_telegram_message_with_reminder_buttons for events not in reminder_acknowledgments, "
                 "or with snoozed_until < NOW(), or pending > 30 min. Include event_id, summary, start time. "
                 "Silence if none."
