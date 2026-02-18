@@ -7,21 +7,30 @@ An AI personal assistant with long-term semantic memory, built with LangGraph, F
 ## Architecture
 
 ```
-                        ┌──────────────────┐
-                        │   Input Channels  │
-                        └────────┬─────────┘
+                        ┌──────────────────────┐
+                        │   Input Channels     │
+                        └────────┬─────────────┘
                                  │
-                   ┌─────────────┴─────────────┐
-                   │                           │
-           ┌───────▼───────┐           ┌───────▼───────┐
-           │  HA Voice     │           │  OpenWebUI    │
-           │  Pipeline     │           │  Chat         │
-           │  (Wyoming)    │           │               │
-           └───────┬───────┘           └───────┬───────┘
-                   │                           │
-                   │  POST /webhook/skippy     │  POST /webhook/v1/chat/completions
-                   │                           │
-                   └─────────────┬─────────────┘
+                   ┌─────────────┼─────────────┐
+                   │             │             │
+           ┌───────▼───────┐ ┌───▼───┐ ┌──────▼──────┐
+           │  HA Voice     │ │Telegram│ │  WhatsApp   │
+           │  Pipeline     │ │ Polling│ │   Adapter   │
+           │  (Wyoming)    │ │        │ │   (Baileys) │
+           └───────┬───────┘ └───┬────┘ └──────┬──────┘
+                   │             │             │
+                   │  POST /webhook/skippy (all channels)
+                   │             │             │
+                   └─────────────┴─────────────┤
+                                               │
+           ┌───────────────────┬───────────────┘
+           │                   │
+       ┌───▼────────────┐  ┌───▼───────────────┐
+       │  OpenWebUI     │  │ FastAPI           │
+       │  Chat Endpoint │  │ (port 8000)       │
+       └───┬────────────┘  └───────┬───────────┘
+           │                       │
+           └───────────┬───────────┘
                                  │
                    ┌─────────────▼─────────────┐
                    │    FastAPI (port 8000)     │
@@ -65,6 +74,7 @@ An AI personal assistant with long-term semantic memory, built with LangGraph, F
 | SMS | Twilio |
 | Google APIs | Calendar, Gmail, Contacts |
 | Telegram | Telegram Bot API (long polling) |
+| WhatsApp | Baileys library (WhatsApp Web protocol) |
 | Web Search | Tavily API (real-time web search) |
 | Deployment | Docker Compose |
 
@@ -298,7 +308,58 @@ Update your existing Skippy HA custom component with the new webhook URL:
 
 Skippy uses long polling (no public webhook required).
 
-### 9. Configure Google Integrations (Optional)
+### 9. Connect WhatsApp (Optional)
+
+WhatsApp integration uses the WhatsApp Web protocol (Baileys library) — **not** the official Meta Business API. The adapter runs as a separate Docker service and bridges messages to Skippy's HTTP API.
+
+**Setup:**
+
+1. Ensure WhatsApp is installed on your phone (or linked device with existing session)
+2. Start the adapter:
+   ```bash
+   docker compose up -d whatsapp_adapter
+   ```
+
+3. View the QR code:
+   ```bash
+   docker compose logs -f whatsapp_adapter
+   ```
+
+   You'll see an ASCII QR code in the logs. Wait for it to stabilize (5-10 seconds).
+
+4. **Link the device on your phone:**
+   - Open WhatsApp
+   - Go to **Settings** (or **⋯**) → **Linked Devices** (or **Linked Accounts**)
+   - Tap **Link a Device**
+   - Scan the QR code from the logs
+
+5. Wait for the logs to show: `WhatsApp connection established` → adapter is live
+
+6. Send a WhatsApp message to your phone number — Skippy will respond!
+
+**Optional Configuration** (in `.env`):
+
+```env
+# Whitelist specific phone numbers (comma-separated, digits only)
+WHATSAPP_ALLOWED_NUMBERS=15551234567,15559876543
+
+# Enable group chat responses (default: disabled, only private chats)
+WHATSAPP_ALLOW_GROUPS=false
+
+# Request timeout for Skippy API calls (milliseconds)
+SKIPPY_TIMEOUT_MS=30000
+```
+
+**Troubleshooting:**
+
+- **No QR code in logs?** Check that the container is running: `docker compose ps whatsapp_adapter`
+- **"Session logged out"?** Your phone unlinked the device. Restart the adapter and scan a new QR code.
+- **No response to messages?** Check if the message is plain text (images, voice notes are skipped). Look for errors in logs: `docker compose logs whatsapp_adapter`
+- **Typing indicator stuck?** This shouldn't happen, but restarting the adapter will clear it: `docker compose restart whatsapp_adapter`
+
+Session files are stored in the `whatsapp_sessions` Docker named volume — they persist across restarts.
+
+### 10. Configure Google Integrations (Optional)
 
 Run the OAuth2 consent flow to generate your refresh token:
 

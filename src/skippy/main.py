@@ -157,7 +157,7 @@ async def voice_endpoint(request: VoiceRequest):
         config={
             "configurable": {
                 "thread_id": conversation_id,
-                "source": "voice",
+                "source": request.source or "voice",
                 "user_id": "nolan",
             }
         },

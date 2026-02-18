@@ -28,6 +28,17 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  whatsapp_adapter:
+    build: ./whatsapp_adapter
+    env_file: .env
+    environment:
+      SKIPPY_BASE_URL: http://skippy:8000
+    volumes:
+      - whatsapp_sessions:/app/sessions
+    depends_on:
+      - skippy
+    restart: unless-stopped
+
   pgadmin:
     image: dpage/pgadmin4:latest
     environment:
@@ -49,3 +60,4 @@ services:
 volumes:
   postgres_data:
   pgadmin_data:
+  whatsapp_sessions:
