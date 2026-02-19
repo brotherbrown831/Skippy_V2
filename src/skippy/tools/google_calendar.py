@@ -44,10 +44,13 @@ def _format_event(event: dict) -> str:
         start_str = datetime.fromisoformat(start["dateTime"]).strftime("%I:%M %p")
         end_str = datetime.fromisoformat(end["dateTime"]).strftime("%I:%M %p")
         time_str = f"{start_str} - {end_str}"
+        # Include full ISO with timezone so reminder tools can store it accurately
+        iso_hint = f" [start_iso: {start['dateTime']}]"
     else:
         time_str = "All day"
+        iso_hint = f" [start_iso: {start.get('date', '')}]"
 
-    result = f"- {summary} ({time_str})"
+    result = f"- {summary} ({time_str}){iso_hint}"
     if location:
         result += f" @ {location}"
     return result
@@ -66,11 +69,13 @@ def _format_event_with_date(event: dict) -> str:
         start_str = dt.strftime("%I:%M %p")
         end_str = datetime.fromisoformat(end["dateTime"]).strftime("%I:%M %p")
         time_str = f"{date_str}, {start_str} - {end_str}"
+        iso_hint = f" [start_iso: {start['dateTime']}]"
     else:
         date_str = datetime.fromisoformat(start["date"]).strftime("%a %b %d")
         time_str = f"{date_str} (All day)"
+        iso_hint = f" [start_iso: {start.get('date', '')}]"
 
-    result = f"- {summary} ({time_str})"
+    result = f"- {summary} ({time_str}){iso_hint}"
     if location:
         result += f" @ {location}"
     return result

@@ -9,6 +9,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from skippy.config import settings
+from skippy.utils.quiet_hours import is_quiet_time
 
 logger = logging.getLogger("skippy")
 
@@ -161,13 +162,87 @@ def _build_predefined_routines() -> list:
 PREDEFINED_ROUTINES = _build_predefined_routines()
 
 
+async def drain_notification_queue() -> None:
+    """Send any queued notifications whose send_at time has passed.
+
+    Runs every 5 minutes. Only processes items when not in quiet hours so that
+    a notification queued for 07:00 is not sent at 06:59 due to scheduler drift.
+    """
+    if is_quiet_time():
+        logger.debug("Quiet hours active — skipping notification queue drain")
+        return
+
+    try:
+        async with get_db_connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT queue_id, tool_name, params
+                    FROM notification_queue
+                    WHERE status = 'pending' AND send_at <= NOW()
+                    ORDER BY send_at ASC
+                    LIMIT 20
+                    """
+                )
+                rows = await cur.fetchall()
+
+                if not rows:
+                    return
+
+                logger.info("Draining %d queued notification(s)", len(rows))
+
+                for queue_id, tool_name, params in rows:
+                    try:
+                        if tool_name == "telegram":
+                            from skippy.tools.telegram import _deliver_telegram
+                            await _deliver_telegram(**params)
+
+                        elif tool_name == "telegram_reminder":
+                            # Re-invoke the full tool with is_critical=True to bypass quiet check
+                            from skippy.tools.telegram import send_telegram_message_with_reminder_buttons
+                            send_telegram_message_with_reminder_buttons.invoke(
+                                {**params, "is_critical": True}
+                            )
+
+                        elif tool_name == "ha_push":
+                            from skippy.tools.home_assistant import _deliver_ha_push
+                            await _deliver_ha_push(**params)
+
+                        elif tool_name == "sms":
+                            from skippy.tools.home_assistant import _deliver_sms
+                            await _deliver_sms(**params)
+
+                        else:
+                            logger.warning("Unknown queued tool: %s", tool_name)
+
+                        await cur.execute(
+                            "UPDATE notification_queue SET status = 'sent', sent_at = NOW() WHERE queue_id = %s",
+                            (queue_id,),
+                        )
+                    except Exception as e:
+                        logger.error("Failed to drain queued notification %d: %s", queue_id, e)
+                        await cur.execute(
+                            "UPDATE notification_queue SET status = 'failed', error_msg = %s WHERE queue_id = %s",
+                            (str(e)[:500], queue_id),
+                        )
+
+    except Exception:
+        logger.exception("Error in drain_notification_queue")
+
+
 async def check_and_notify_snoozed_reminders() -> None:
     """Check for snoozed reminders that are due and send notifications.
 
     This job runs every 5 minutes to catch reminder snoozes when they expire.
     If a reminder's snoozed_until time has passed, it sends a Telegram message
     to remind the user and updates the status back to 'pending'.
+    Skips processing entirely during quiet hours — the next run after quiet
+    hours end will pick up any expired snoozes.
     """
+    if is_quiet_time():
+        logger.debug("Quiet hours active — skipping snoozed reminder check")
+        return
+
     try:
         async with get_db_connection() as conn:
             async with conn.cursor() as cur:
@@ -259,6 +334,16 @@ def _build_direct_routines() -> list:
             "task_id": "check-snoozed-reminders",
             "name": "Snooze Reminder Check",
             "func": "skippy.scheduler.routines:check_and_notify_snoozed_reminders",
+            "trigger": IntervalTrigger(minutes=5),
+        }
+    )
+
+    # Notification queue drain (runs every 5 minutes to deliver quiet-hour deferred messages)
+    routines.append(
+        {
+            "task_id": "drain-notification-queue",
+            "name": "Notification Queue Drain",
+            "func": "skippy.scheduler.routines:drain_notification_queue",
             "trigger": IntervalTrigger(minutes=5),
         }
     )

@@ -22,6 +22,12 @@ You can send SMS text messages using the send_sms tool. Use this for important o
 or when push notifications aren't reliable. Prefer push notifications for routine alerts and SMS for \
 higher-priority items or when the user explicitly asks for a text.
 
+QUIET HOURS: Non-critical notifications are automatically suppressed and queued during quiet hours \
+(weekdays: before 07:00 or after 21:30; weekends: before 09:00 or after 21:30). They are delivered \
+automatically at the start of the next active window. All notification tools accept an is_critical \
+parameter — set is_critical=True only for genuine emergencies that cannot wait (security alerts, \
+urgent safety issues). Do NOT set is_critical=True for routine reminders, briefings, or tasks.
+
 You can create, list, and delete scheduled tasks using the scheduler tools. If the user asks you to \
 do something on a recurring basis, use create_scheduled_task. For timers and reminders ("set a timer \
 for 10 minutes", "remind me at 3pm to leave"), use the set_reminder tool instead — it handles \
@@ -96,6 +102,12 @@ you need to alert them about something important, deliver a reminder, or when th
 You can send SMS text messages using the send_sms tool. Use this for important or urgent messages, \
 or when push notifications aren't reliable. Prefer push notifications for routine alerts and SMS for \
 higher-priority items or when the user explicitly asks for a text.
+
+QUIET HOURS: Non-critical notifications are automatically suppressed and queued during quiet hours \
+(weekdays: before 07:00 or after 21:30; weekends: before 09:00 or after 21:30). They are delivered \
+automatically at the start of the next active window. All notification tools accept an is_critical \
+parameter — set is_critical=True only for genuine emergencies that cannot wait (security alerts, \
+urgent safety issues). Do NOT set is_critical=True for routine reminders, briefings, or tasks.
 
 You can create, list, and delete scheduled tasks using the scheduler tools. If the user asks you to \
 do something on a recurring basis, use create_scheduled_task. For timers and reminders ("set a timer \

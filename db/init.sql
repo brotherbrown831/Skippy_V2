@@ -212,3 +212,19 @@ CREATE TABLE IF NOT EXISTS user_preferences (
 -- Insert default preferences for nolan
 INSERT INTO user_preferences (user_id) VALUES ('nolan')
 ON CONFLICT (user_id) DO NOTHING;
+
+-- Notification queue for quiet-hours deferred delivery
+CREATE TABLE IF NOT EXISTS notification_queue (
+    queue_id SERIAL PRIMARY KEY,
+    tool_name VARCHAR(50) NOT NULL,
+    params JSONB NOT NULL,
+    send_at TIMESTAMPTZ NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    sent_at TIMESTAMPTZ,
+    error_msg TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_notif_queue_pending
+    ON notification_queue (send_at)
+    WHERE status = 'pending';

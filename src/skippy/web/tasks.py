@@ -153,17 +153,17 @@ def get_tasks_html() -> str:
 
             card.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--spacing-8);">
-                    <div style="flex: 1;">
+                    <div style="flex: 1; min-width: 0; overflow-wrap: break-word;">
                         <div style="color: var(--text-main); font-weight: 600; font-size: 1rem; margin-bottom: var(--spacing-4);">${task.title}</div>
                     </div>
-                    ${!isBacklog ? `<input type="checkbox" onchange="toggleTaskComplete(${task.task_id}, this.checked)" style="margin-left: var(--spacing-8);">` : ''}
+                    ${!isBacklog ? `<input type="checkbox" onchange="toggleTaskComplete(${task.task_id}, this.checked)" style="width: auto; min-width: auto; margin-bottom: 0; margin-left: var(--spacing-8); flex-shrink: 0;">` : ''}
                 </div>
                 <div class="task-badges" style="margin-bottom: var(--spacing-8);">
                     ${badgesHtml}
                 </div>
                 ${dueDateStr ? `<div class="task-meta" style="margin-bottom: var(--spacing-8);\"><span style="color: ${dueTodayClass}; font-size: 0.85rem;">${dueDateStr}</span></div>` : ''}
                 <div class="task-details" style="display: none;">
-                    ${task.description ? `<div class="task-description" style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: var(--spacing-8);">${task.description}</div>` : ''}
+                    ${task.description ? `<div class="task-description" style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: var(--spacing-8); overflow-wrap: break-word; word-break: break-word;">${task.description}</div>` : ''}
                     <div class="task-actions" style="display: flex; gap: var(--spacing-4); flex-wrap: wrap;">
                         ${!isBacklog ? `<button class="action-btn complete btn btn-primary" onclick="completeTask(${task.task_id})" style="font-size: 0.85rem; padding: 4px 12px;">✓ Complete</button>` : ''}
                         ${isBacklog ? `<button class="action-btn promote btn btn-secondary" onclick="promoteTask(${task.task_id})" style="font-size: 0.85rem; padding: 4px 12px;">↑ Promote</button>` : `<button class="action-btn defer btn btn-secondary" onclick="showDeferDialog(${task.task_id})" style="font-size: 0.85rem; padding: 4px 12px;">⏸ Defer</button>`}

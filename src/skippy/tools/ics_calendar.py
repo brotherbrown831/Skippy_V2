@@ -87,11 +87,13 @@ def _format_event(event: dict) -> str:
         start_str = start.strftime("%I:%M %p")
         end_str = end.strftime("%I:%M %p") if end else start_str
         time_str = f"{start_str} - {end_str}"
+        iso_hint = f" [start_iso: {start.isoformat()}]"
     else:
         # All-day event or missing time
         time_str = "All day"
+        iso_hint = f" [start_iso: {start.isoformat() if start else ''}]"
 
-    result = f"- {summary} ({time_str})"
+    result = f"- {summary} ({time_str}){iso_hint}"
     if location:
         result += f" @ {location}"
     return result
@@ -111,6 +113,7 @@ def _format_event_with_date(event: dict) -> str:
         start_str = start.strftime("%I:%M %p")
         end_str = end.strftime("%I:%M %p") if end else start_str
         time_str = f"{date_str}, {start_str} - {end_str}"
+        iso_hint = f" [start_iso: {start.isoformat()}]"
     else:
         # All-day event or missing time
         if start:
@@ -123,8 +126,9 @@ def _format_event_with_date(event: dict) -> str:
             time_str = f"{date_str} (All day)"
         else:
             time_str = "(no date)"
+        iso_hint = f" [start_iso: {start.isoformat() if start else ''}]"
 
-    result = f"- {summary} ({time_str})"
+    result = f"- {summary} ({time_str}){iso_hint}"
     if location:
         result += f" @ {location}"
     return result
