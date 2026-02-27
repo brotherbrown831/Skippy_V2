@@ -10,6 +10,7 @@ from langchain_core.tools import tool
 
 from skippy.config import settings
 from skippy.utils.activity_logger import log_activity
+from skippy.utils.date_parser import parse_datetime
 
 logger = logging.getLogger(__name__)
 
@@ -78,46 +79,13 @@ def _calculate_urgency_score(
     return max(0, base_score)
 
 
-def _parse_due_date(due_date_str: str) -> datetime:
-    """Parse due date from various formats.
+def _parse_due_date(due_date_str: str) -> datetime | None:
+    """Parse due date from natural language or ISO format.
 
-    Handles: ISO format, natural language ("tomorrow", "next Friday"), etc.
+    Delegates to the shared parse_datetime utility which handles:
+    "tomorrow at noon", "next Friday at 3pm", "in 2 hours", ISO strings, etc.
     """
-    if not due_date_str:
-        return None
-
-    due_date_str = due_date_str.strip().lower()
-
-    # Simple natural language parsing
-    now = datetime.now(tz=ZoneInfo("UTC"))
-
-    if due_date_str == "today":
-        return now.replace(hour=23, minute=59, second=59)
-    elif due_date_str == "tomorrow":
-        return (now + timedelta(days=1)).replace(hour=23, minute=59, second=59)
-    elif due_date_str == "tonight":
-        return now.replace(hour=23, minute=59, second=59)
-
-    # Try parsing as ISO format
-    try:
-        return datetime.fromisoformat(due_date_str.replace("z", "+00:00"))
-    except (ValueError, AttributeError):
-        pass
-
-    # Try dateutil parser if available
-    try:
-        from dateutil import parser as dateutil_parser
-
-        parsed = dateutil_parser.parse(due_date_str, fuzzy=False)
-        # If no time was specified, set to end of day
-        if ":" not in due_date_str:
-            parsed = parsed.replace(hour=23, minute=59, second=59)
-        return parsed
-    except (ValueError, TypeError):
-        pass
-
-    logger.warning("Could not parse due_date: %s", due_date_str)
-    return None
+    return parse_datetime(due_date_str)
 
 
 @tool
@@ -221,7 +189,11 @@ async def create_task(
 
 @tool
 async def list_tasks(
-    status: str = "", project: str = "", include_backlog: bool = False, limit: int = 20
+    status: str = "",
+    project: str = "",
+    include_backlog: bool = False,
+    limit: int = 20,
+    completed_today: bool = False,
 ) -> str:
     """List tasks with optional filtering.
 
@@ -230,6 +202,7 @@ async def list_tasks(
         project: Filter by project name
         include_backlog: Include backlog items (default: False)
         limit: Max results to return (default: 20)
+        completed_today: When True and status='done', only return tasks completed today (default: False)
     """
     try:
         async with get_db_connection() as conn:
@@ -248,14 +221,23 @@ async def list_tasks(
                 if status != "done" and status != "archived":
                     where_conditions.append("status NOT IN ('done', 'archived')")
 
+                # Optionally restrict completed tasks to today only
+                if completed_today and status == "done":
+                    where_conditions.append("completed_at >= CURRENT_DATE")
+
                 where_clause = " AND ".join(where_conditions)
 
+                order_by = (
+                    "completed_at DESC"
+                    if status == "done"
+                    else "urgency_score DESC, due_date ASC NULLS LAST"
+                )
                 await cur.execute(
                     f"""
                     SELECT task_id, title, status, priority, due_date, project, urgency_score, estimated_minutes
                     FROM tasks
                     WHERE {where_clause}
-                    ORDER BY urgency_score DESC, due_date ASC NULLS LAST
+                    ORDER BY {order_by}
                     LIMIT %s
                     """,
                     (limit,),

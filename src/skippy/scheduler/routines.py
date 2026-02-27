@@ -25,54 +25,32 @@ async def recalculate_people_importance() -> None:
     - days_since = days since last_mentioned
     - recency_bonus = 50 * exp(-days_since / 30)
     - importance_score = base_score + recency_bonus
+
+    Uses a single batch SQL UPDATE to avoid row-lock contention from looping.
     """
     try:
         async with get_db_connection() as conn:
             async with conn.cursor() as cur:
-                # Fetch all people with mention_count > 0
                 await cur.execute(
                     """
-                    SELECT person_id, mention_count, last_mentioned
-                    FROM people
+                    UPDATE people
+                    SET
+                        importance_score = LEAST(mention_count * 2, 50)
+                            + CASE
+                                WHEN last_mentioned IS NOT NULL
+                                THEN 50 * EXP(
+                                    -EXTRACT(EPOCH FROM (NOW() - last_mentioned))
+                                    / (30.0 * 86400)
+                                )
+                                ELSE 0
+                              END,
+                        updated_at = NOW()
                     WHERE user_id = %s AND mention_count > 0
                     """,
                     ("nolan",),
                 )
-                rows = await cur.fetchall()
-
-                now = datetime.now(timezone.utc)
-                updated_count = 0
-
-                for person_id, mention_count, last_mentioned in rows:
-                    # Calculate base score
-                    base_score = min(mention_count * 2, 50)
-
-                    # Calculate recency bonus
-                    if last_mentioned:
-                        # If timezone-naive, assume UTC
-                        if last_mentioned.tzinfo is None:
-                            last_mentioned = last_mentioned.replace(tzinfo=timezone.utc)
-                        days_since = (now - last_mentioned).days
-                        recency_bonus = 50 * math.exp(-days_since / 30)
-                    else:
-                        recency_bonus = 0
-
-                    importance_score = base_score + recency_bonus
-
-                    # Update
-                    await cur.execute(
-                        """
-                        UPDATE people
-                        SET importance_score = %s, updated_at = NOW()
-                        WHERE person_id = %s
-                        """,
-                        (importance_score, person_id),
-                    )
-                    updated_count += 1
-
-                logger.info(
-                    "Recalculated importance for %d people", updated_count
-                )
+                updated_count = cur.rowcount
+                logger.info("Recalculated importance for %d people", updated_count)
 
     except Exception as e:
         logger.error("Failed to recalculate people importance: %s", e)
@@ -133,7 +111,7 @@ def _build_predefined_routines() -> list:
                     "with a brief preview. Include: "
                     "1. Tomorrow's calendar events. "
                     "2. Tasks due tomorrow or marked as 'next_up' for tomorrow. "
-                    "3. Completed tasks today (count and celebrate if any). "
+                    "3. Completed tasks today (use list_tasks with status='done' and completed_today=True to get only today's completions — count and celebrate if any). "
                     "Keep it short and snarky. Use the send_telegram_message tool."
                 ),
                 "trigger": evening_trigger,

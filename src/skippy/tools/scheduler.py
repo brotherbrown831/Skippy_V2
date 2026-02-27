@@ -12,6 +12,7 @@ from langchain_core.tools import tool
 from skippy.config import settings
 from skippy.scheduler.engine import _build_trigger
 from skippy.scheduler.executor import run_scheduled_task
+from skippy.utils.date_parser import parse_datetime
 
 logger = logging.getLogger("skippy")
 
@@ -181,17 +182,22 @@ async def set_reminder(
     message: str,
     minutes_from_now: int = 0,
     time_today: str = "",
+    run_at: str = "",
 ) -> str:
     """Set a timer or reminder. Use this when the user says "remind me", "set a
     timer", or wants to be notified about something after a delay or at a specific
-    time today.
+    time.
 
     Args:
-        message: What to remind the user about (e.g., "leave for dock appointment").
-        minutes_from_now: How many minutes from now to fire the reminder. Use this
-            for timers like "in 10 minutes" or "in an hour" (60).
-        time_today: A specific time today like '3pm', '15:00', '2:30pm'. Use this
-            for reminders like "at 3pm" or "this afternoon at 2".
+        message: What to remind the user about (e.g., "call mom", "leave for appointment").
+        minutes_from_now: How many minutes from now to fire. Use for "in 10 minutes",
+            "in an hour" (60), etc.
+        time_today: A specific time TODAY like '3pm', '15:00', '2:30pm'. Use only
+            when the reminder is for later today.
+        run_at: A full date+time expression for any future time. Accepts natural
+            language like "tomorrow at noon", "tomorrow at 9am", "next Friday at 3pm",
+            "in 2 hours", "Feb 25 at 10am". Prefer this over time_today when the
+            reminder is not for today.
     """
     from skippy.main import app
 
@@ -201,6 +207,13 @@ async def set_reminder(
     if minutes_from_now > 0:
         run_dt = now + timedelta(minutes=minutes_from_now)
         time_label = f"in {minutes_from_now} minutes"
+    elif run_at:
+        run_dt = parse_datetime(run_at, tz=tz)
+        if run_dt is None:
+            return f"Error: Could not understand the time '{run_at}'. Try something like 'tomorrow at noon' or 'Feb 25 at 3pm'."
+        if run_dt <= now:
+            return f"Error: '{run_at}' resolves to a time that has already passed ({run_dt.strftime('%Y-%m-%d %I:%M %p')})."
+        time_label = f"at {run_dt.strftime('%A, %b %-d at %-I:%M %p')}"
     elif time_today:
         try:
             run_dt = _parse_time(time_today)
@@ -210,7 +223,7 @@ async def set_reminder(
             return f"Error: {time_today} has already passed today."
         time_label = f"at {run_dt.strftime('%I:%M %p')}"
     else:
-        return "Error: Provide either minutes_from_now or time_today."
+        return "Error: Provide minutes_from_now, run_at (e.g. 'tomorrow at noon'), or time_today."
 
     task_id = f"reminder-{uuid.uuid4().hex[:8]}"
     run_date_iso = run_dt.isoformat()

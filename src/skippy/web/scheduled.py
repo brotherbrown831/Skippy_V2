@@ -21,7 +21,7 @@ async def get_scheduled_tasks():
             async with conn.cursor() as cur:
                 await cur.execute("""
                     SELECT task_id, name, description, schedule_type,
-                           schedule_config, enabled, source, created_at
+                           schedule_config, enabled, source, created_at, ran_at
                     FROM scheduled_tasks
                     ORDER BY created_at DESC
                 """)
@@ -36,6 +36,10 @@ async def get_scheduled_tasks():
                             task_dict['schedule_config'] = json.loads(task_dict['schedule_config'])
                         except:
                             pass
+                    # Serialize datetimes
+                    for dt_field in ('created_at', 'ran_at'):
+                        if task_dict.get(dt_field) is not None:
+                            task_dict[dt_field] = task_dict[dt_field].isoformat()
                     tasks.append(task_dict)
                 return tasks
     except Exception as e:
@@ -143,18 +147,29 @@ def get_scheduled_html() -> str:
                     const typeColor = typeColors[t.schedule_type] || 'var(--accent-blue)';
                     const sourceColor = typeColors[t.source] || 'var(--accent-blue)';
 
+                    const isCompleted = t.schedule_type === 'date' && t.ran_at;
+                    let statusHtml, actionsHtml;
+                    if (isCompleted) {
+                        const ranDate = new Date(t.ran_at).toLocaleString();
+                        statusHtml = `<span style="color: var(--text-muted);">✓ Ran ${ranDate}</span>`;
+                        actionsHtml = `<span style="color: var(--text-muted); font-size: 0.8rem;">one-time</span>`;
+                    } else if (t.enabled) {
+                        statusHtml = `<span style="color: #48bb78;">● Active</span>`;
+                        actionsHtml = `<button class="btn btn-secondary" onclick="toggleTask('${t.task_id}')">Disable</button>`;
+                    } else {
+                        statusHtml = `<span style="color: var(--text-muted);">○ Disabled</span>`;
+                        actionsHtml = `<button class="btn btn-secondary" onclick="toggleTask('${t.task_id}')">Enable</button>`;
+                    }
+
+                    const rowOpacity = isCompleted ? 'opacity: 0.55;' : '';
                     return `
-                        <tr style="border-bottom: 1px solid var(--border-color);">
+                        <tr style="border-bottom: 1px solid var(--border-color); ${rowOpacity}">
                             <td style="padding: var(--spacing-8); color: var(--text-main); font-weight: 600;">${t.name}</td>
                             <td style="padding: var(--spacing-8);"><span style="color: ${typeColor}; font-size: 0.85rem; font-weight: 600;">${t.schedule_type}</span></td>
                             <td style="padding: var(--spacing-8); color: var(--text-muted); font-size: 0.85rem; font-family: monospace;">${schedule}</td>
                             <td style="padding: var(--spacing-8);"><span style="color: ${sourceColor}; font-size: 0.85rem; font-weight: 600;">${t.source}</span></td>
-                            <td style="padding: var(--spacing-8); color: ${t.enabled ? '#48bb78' : 'var(--text-muted)'}">${t.enabled ? '✓ Enabled' : '✗ Disabled'}</td>
-                            <td style="padding: var(--spacing-8);">
-                                <button class="btn btn-secondary" onclick="toggleTask('${t.task_id}')" style="margin-right: var(--spacing-4);">
-                                    ${t.enabled ? 'Disable' : 'Enable'}
-                                </button>
-                            </td>
+                            <td style="padding: var(--spacing-8);">${statusHtml}</td>
+                            <td style="padding: var(--spacing-8);">${actionsHtml}</td>
                         </tr>
                     `;
                 }).join('');

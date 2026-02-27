@@ -85,3 +85,21 @@ async def execute_scheduled_task(task_id: str, prompt: str) -> str:
 async def run_scheduled_task(task_id: str, prompt: str) -> None:
     """Async entry point for APScheduler — runs directly on the event loop."""
     await execute_scheduled_task(task_id, prompt)
+
+    # If this was a one-time (date-type) task, mark it as completed so the
+    # UI shows "Ran on ..." instead of leaving it as an active enabled task.
+    try:
+        from skippy.db_utils import get_db_connection
+
+        async with get_db_connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE scheduled_tasks
+                    SET enabled = FALSE, ran_at = NOW()
+                    WHERE task_id = %s AND schedule_type = 'date'
+                    """,
+                    (task_id,),
+                )
+    except Exception as e:
+        logger.error("Failed to mark one-time task '%s' as completed: %s", task_id, e)

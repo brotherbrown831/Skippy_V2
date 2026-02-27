@@ -331,7 +331,7 @@ def get_people_html() -> str:
                 // Separate important and all people
                 const important = filtered.filter(p =>
                     (p.canonical_name && p.canonical_name.trim() !== '') &&
-                    (p.importance_score >= 50 ||
+                    (p.importance_score >= 55 ||
                     (p.last_mentioned && new Date(p.last_mentioned) > new Date(Date.now() - 7*24*60*60*1000))))
                     .sort((a, b) => (b.importance_score || 0) - (a.importance_score || 0))
                     .slice(0, 10);
