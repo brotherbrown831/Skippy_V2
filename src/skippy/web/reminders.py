@@ -21,7 +21,7 @@ async def get_reminders():
                 await cur.execute("""
                     SELECT reminder_id, event_id, event_summary, event_start,
                            reminded_at, acknowledged_at, snoozed_until, status,
-                           created_at
+                           last_sent_at, retry_count, created_at
                     FROM reminder_acknowledgments
                     WHERE user_id = %s
                     ORDER BY event_start DESC
@@ -43,7 +43,8 @@ async def get_pending_reminders():
             async with conn.cursor() as cur:
                 await cur.execute("""
                     SELECT reminder_id, event_id, event_summary, event_start,
-                           reminded_at, acknowledged_at, snoozed_until, status
+                           reminded_at, acknowledged_at, snoozed_until, status,
+                           last_sent_at, retry_count
                     FROM reminder_acknowledgments
                     WHERE user_id = %s
                       AND status = 'pending'
@@ -146,6 +147,7 @@ def get_reminders_html() -> str:
                     <th style="background: var(--bg-tertiary); color: var(--accent-blue); padding: var(--spacing-8); text-align: left; border-bottom: 1px solid var(--border-color);">Event Time</th>
                     <th style="background: var(--bg-tertiary); color: var(--accent-blue); padding: var(--spacing-8); text-align: left; border-bottom: 1px solid var(--border-color);">Reminded At</th>
                     <th style="background: var(--bg-tertiary); color: var(--accent-blue); padding: var(--spacing-8); text-align: left; border-bottom: 1px solid var(--border-color);">Status</th>
+                    <th style="background: var(--bg-tertiary); color: var(--accent-blue); padding: var(--spacing-8); text-align: left; border-bottom: 1px solid var(--border-color);">Follow-ups</th>
                     <th style="background: var(--bg-tertiary); color: var(--accent-blue); padding: var(--spacing-8); text-align: left; border-bottom: 1px solid var(--border-color);">Actions</th>
                 </tr>
             </thead>
@@ -159,10 +161,27 @@ def get_reminders_html() -> str:
 
     scripts = '''
     <script>
+        const MAX_RETRIES = 3;
+
         function formatDate(dateStr) {
             if (!dateStr) return '';
             const d = new Date(dateStr);
             return d.toLocaleString();
+        }
+
+        function formatRelative(dateStr) {
+            if (!dateStr) return '—';
+            const diff = Math.round((Date.now() - new Date(dateStr)) / 60000);
+            if (diff < 1) return 'just now';
+            if (diff < 60) return `${diff}m ago`;
+            const h = Math.floor(diff / 60);
+            return `${h}h ${diff % 60}m ago`;
+        }
+
+        function retryBadge(retryCount) {
+            if (retryCount === 0) return '<span style="color: var(--text-muted);">none</span>';
+            const color = retryCount >= MAX_RETRIES ? '#f56565' : retryCount >= 2 ? '#ed8936' : 'var(--accent-blue)';
+            return `<span style="color: ${color}; font-weight: 600;">${retryCount} / ${MAX_RETRIES}</span>`;
         }
 
         async function loadPendingReminders() {
@@ -176,18 +195,28 @@ def get_reminders_html() -> str:
                     return;
                 }
 
-                container.innerHTML = reminders.map(r => `
+                container.innerHTML = reminders.map(r => {
+                    const retried = r.retry_count > 0;
+                    const maxed = r.retry_count >= MAX_RETRIES;
+                    const followUpLine = retried
+                        ? `<div style="color: ${maxed ? '#f56565' : '#ed8936'}; font-size: 0.85rem; margin-top: var(--spacing-4);">
+                               ${maxed ? '⚠️ Max follow-ups reached' : `🔁 Followed up ${r.retry_count}/${MAX_RETRIES} times`}
+                               · last sent ${formatRelative(r.last_sent_at)}
+                           </div>`
+                        : '';
+                    return `
                     <div style="background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: var(--spacing-8); margin-bottom: var(--spacing-8); display: flex; justify-content: space-between; align-items: center;">
                         <div>
                             <div style="font-weight: 600; color: var(--text-main); margin-bottom: var(--spacing-4);">${r.event_summary}</div>
                             <div style="color: var(--accent-blue); font-size: 0.9rem;">Event: ${formatDate(r.event_start)}</div>
+                            ${followUpLine}
                         </div>
                         <div style="display: flex; gap: var(--spacing-4);">
                             <button class="btn btn-primary" onclick="acknowledgeReminder(${r.reminder_id})">✓ Acknowledge</button>
                             <button class="btn btn-secondary" onclick="snoozeReminder(${r.reminder_id}, 15)">⏱ Snooze 15m</button>
                         </div>
-                    </div>
-                `).join('');
+                    </div>`;
+                }).join('');
             } catch (err) {
                 console.error(err);
             }
@@ -200,22 +229,28 @@ def get_reminders_html() -> str:
                 const tbody = document.getElementById('remindersTable');
 
                 if (!reminders || reminders.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: var(--spacing-12);">No reminders</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: var(--spacing-12);">No reminders</td></tr>';
                     return;
                 }
 
-                tbody.innerHTML = reminders.map(r => `
+                tbody.innerHTML = reminders.map(r => {
+                    const statusColor = r.status === 'pending' ? 'var(--accent-blue)' : r.status === 'acknowledged' ? '#48bb78' : '#4299e1';
+                    const followUp = r.retry_count > 0
+                        ? `${retryBadge(r.retry_count)}<br><span style="color: var(--text-muted); font-size: 0.8rem;">${formatRelative(r.last_sent_at)}</span>`
+                        : retryBadge(0);
+                    return `
                     <tr style="border-bottom: 1px solid var(--border-color);">
                         <td style="padding: var(--spacing-8); color: var(--text-main);">${r.event_summary}</td>
                         <td style="padding: var(--spacing-8); color: var(--text-main);">${formatDate(r.event_start)}</td>
                         <td style="padding: var(--spacing-8); color: var(--text-main);">${formatDate(r.reminded_at)}</td>
-                        <td style="padding: var(--spacing-8);"><span style="color: ${r.status === 'pending' ? 'var(--accent-blue)' : r.status === 'acknowledged' ? '#48bb78' : '#4299e1'};\">${r.status}</span></td>
+                        <td style="padding: var(--spacing-8);"><span style="color: ${statusColor};">${r.status}</span></td>
+                        <td style="padding: var(--spacing-8);">${followUp}</td>
                         <td style="padding: var(--spacing-8);">
                             ${r.status === 'pending' ? `<button class="btn btn-primary" onclick="acknowledgeReminder(${r.reminder_id})" style="margin-right: var(--spacing-4);">Acknowledge</button>` : ''}
                             <button class="btn btn-danger" onclick="deleteReminder(${r.reminder_id})">Delete</button>
                         </td>
-                    </tr>
-                `).join('');
+                    </tr>`;
+                }).join('');
             } catch (err) {
                 console.error(err);
             }
