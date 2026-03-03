@@ -209,8 +209,8 @@ async def drain_notification_queue() -> None:
                             (str(e)[:500], queue_id),
                         )
 
-        except Exception:
-            logger.exception("Error in drain_notification_queue")
+    except Exception:
+        logger.exception("Error in drain_notification_queue")
 
 
 def _format_follow_up_message(event_summary: str, event_start: datetime) -> str:
