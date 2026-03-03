@@ -95,6 +95,8 @@ CREATE TABLE IF NOT EXISTS reminder_acknowledgments (
     acknowledged_at TIMESTAMPTZ,
     snoozed_until TIMESTAMPTZ,
     status TEXT NOT NULL DEFAULT 'pending',
+    last_sent_at TIMESTAMPTZ,
+    retry_count INT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

@@ -2,7 +2,9 @@
 
 import logging
 import math
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+
+from zoneinfo import ZoneInfo
 
 from skippy.db_utils import get_db_connection
 from apscheduler.triggers.cron import CronTrigger
@@ -12,6 +14,9 @@ from skippy.config import settings
 from skippy.utils.quiet_hours import is_quiet_time
 
 logger = logging.getLogger("skippy")
+FOLLOW_UP_MIN_GAP_MINUTES = 10
+FOLLOW_UP_WINDOW_HOURS = 2
+FOLLOW_UP_MAX_RETRIES = 3
 
 
 async def recalculate_people_importance() -> None:
@@ -204,8 +209,88 @@ async def drain_notification_queue() -> None:
                             (str(e)[:500], queue_id),
                         )
 
+        except Exception:
+            logger.exception("Error in drain_notification_queue")
+
+
+def _format_follow_up_message(event_summary: str, event_start: datetime) -> str:
+    """Build a brief follow-up text for reminders that remain pending."""
+    local_dt = event_start.astimezone(ZoneInfo(settings.timezone))
+    time_str = local_dt.strftime("%I:%M %p").lstrip("0")
+    date_str = local_dt.strftime("%a, %b %d")
+    return (
+        f"Reminder follow-up: {event_summary} starts at {time_str} on {date_str}. "
+        "Tap a button to acknowledge or snooze."
+    )
+
+
+async def follow_up_pending_reminders() -> None:
+    """Re-send reminders that are still pending and haven’t been snoozed."""
+    if is_quiet_time():
+        logger.debug("Quiet hours active — skipping reminder follow-up")
+        return
+
+    lookahead = datetime.now(ZoneInfo(settings.timezone)) + timedelta(hours=FOLLOW_UP_WINDOW_HOURS)
+
+    try:
+        async with get_db_connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    SELECT reminder_id, event_id, event_summary, event_start, retry_count
+                    FROM reminder_acknowledgments
+                    WHERE user_id = %s
+                      AND status = 'pending'
+                      AND (snoozed_until IS NULL OR snoozed_until < NOW())
+                      AND event_start > NOW()
+                      AND event_start <= %s
+                      AND (last_sent_at IS NULL OR last_sent_at <= NOW() - INTERVAL %s)
+                      AND retry_count < %s
+                    ORDER BY event_start
+                    """,
+                    (
+                        "nolan",
+                        lookahead,
+                        f"{FOLLOW_UP_MIN_GAP_MINUTES} minutes",
+                        FOLLOW_UP_MAX_RETRIES,
+                    ),
+                )
+                rows = await cur.fetchall()
+                if not rows:
+                    return
+
+                logger.info("Following up on %d pending reminder(s)", len(rows))
+
+                for reminder_id, event_id, event_summary, event_start, _retry in rows:
+                    follow_up_message = _format_follow_up_message(event_summary, event_start)
+                    try:
+                        from skippy.tools.telegram import send_telegram_message_with_reminder_buttons
+
+                        send_telegram_message_with_reminder_buttons.invoke(
+                            {
+                                "message": follow_up_message,
+                                "event_id": event_id,
+                                "event_summary": event_summary,
+                                "event_start": event_start.isoformat(),
+                                "is_critical": True,
+                                "reminder_id": reminder_id,
+                            }
+                        )
+
+                        await cur.execute(
+                            """
+                            UPDATE reminder_acknowledgments
+                            SET last_sent_at = NOW(),
+                                retry_count = retry_count + 1,
+                                updated_at = NOW()
+                            WHERE reminder_id = %s
+                            """,
+                            (reminder_id,),
+                        )
+                    except Exception as e:
+                        logger.error("Failed follow-up for reminder %s: %s", reminder_id, e)
     except Exception:
-        logger.exception("Error in drain_notification_queue")
+        logger.exception("Error in follow_up_pending_reminders")
 
 
 async def check_and_notify_snoozed_reminders() -> None:
@@ -322,6 +407,15 @@ def _build_direct_routines() -> list:
             "task_id": "drain-notification-queue",
             "name": "Notification Queue Drain",
             "func": "skippy.scheduler.routines:drain_notification_queue",
+            "trigger": IntervalTrigger(minutes=5),
+        }
+    )
+
+    routines.append(
+        {
+            "task_id": "follow-up-pending-reminders",
+            "name": "Reminder Follow-Up",
+            "func": "skippy.scheduler.routines:follow_up_pending_reminders",
             "trigger": IntervalTrigger(minutes=5),
         }
     )

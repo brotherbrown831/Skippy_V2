@@ -91,6 +91,7 @@ def send_telegram_message_with_reminder_buttons(
     event_start: str,
     chat_id: int | None = None,
     is_critical: bool = False,
+    reminder_id: int | None = None,
 ) -> str:
     """Send a Telegram reminder message with acknowledgment buttons and record it in the database.
 
@@ -105,6 +106,7 @@ def send_telegram_message_with_reminder_buttons(
         is_critical: If True, send immediately even during quiet hours. Defaults to
             False — reminders are queued and delivered at the start of the next
             active window (07:00 weekdays / 09:00 weekends, cutoff 21:30 daily).
+        reminder_id: Optional reminder_id when re-sending an existing reminder.
     """
     if not is_critical and is_quiet_time():
         # Queue as telegram_reminder so the drainer can call the full tool logic
@@ -154,68 +156,67 @@ def send_telegram_message_with_reminder_buttons(
         # Generate a deterministic event_id from summary + start (ignore LLM-provided value)
         stable_event_id = f"{event_summary}_{event_dt.strftime('%Y%m%dT%H%M')}"
 
-        reminder_id = None
-        try:
-            async with get_db_connection() as conn:
-                async with conn.cursor() as cur:
-                    # Deduplication: check for existing reminder by (user, summary, start)
-                    await cur.execute(
-                        """
-                        SELECT reminder_id, status, snoozed_until
-                        FROM reminder_acknowledgments
-                        WHERE user_id = %s AND event_summary = %s AND event_start = %s
-                        ORDER BY created_at DESC
-                        LIMIT 1
-                        """,
-                        ("nolan", event_summary, event_dt),
-                    )
-                    existing = await cur.fetchone()
-                    if existing:
-                        existing_id, status, snoozed_until = existing
-                        if status in ("pending", "acknowledged", "dismissed"):
-                            logger.info(
-                                "Reminder already exists (id=%s, status=%s) for '%s' — skipping",
-                                existing_id, status, event_summary,
-                            )
-                            return (
-                                f"Reminder already sent for '{event_summary}' (status: {status}) — skipping."
-                            )
-                        if status == "snoozed" and snoozed_until and snoozed_until > now:
-                            logger.info(
-                                "Reminder snoozed until %s for '%s' — skipping",
-                                snoozed_until, event_summary,
-                            )
-                            return (
-                                f"Reminder for '{event_summary}' snoozed until {snoozed_until} — skipping."
-                            )
+        local_reminder_id = reminder_id
+        if local_reminder_id is None:
+            try:
+                async with get_db_connection() as conn:
+                    async with conn.cursor() as cur:
+                        # Deduplication: check for existing reminder by (user, summary, start)
+                        await cur.execute(
+                            """
+                            SELECT reminder_id, status, snoozed_until
+                            FROM reminder_acknowledgments
+                            WHERE user_id = %s AND event_summary = %s AND event_start = %s
+                            ORDER BY created_at DESC
+                            LIMIT 1
+                            """,
+                            ("nolan", event_summary, event_dt),
+                        )
+                        existing = await cur.fetchone()
+                        if existing:
+                            existing_id, status, snoozed_until = existing
+                            if status in ("pending", "acknowledged", "dismissed"):
+                                logger.info(
+                                    "Reminder already exists (id=%s, status=%s) for '%s' — skipping",
+                                    existing_id, status, event_summary,
+                                )
+                                return (
+                                    f"Reminder already sent for '{event_summary}' (status: {status}) — skipping."
+                                )
+                            if status == "snoozed" and snoozed_until and snoozed_until > now:
+                                logger.info(
+                                    "Reminder snoozed until %s for '%s' — skipping",
+                                    snoozed_until, event_summary,
+                                )
+                                return (
+                                    f"Reminder for '{event_summary}' snoozed until {snoozed_until} — skipping."
+                                )
 
-                    # No blocking duplicate found — insert new record
-                    await cur.execute(
-                        "INSERT INTO reminder_acknowledgments "
-                        "(user_id, event_id, event_summary, event_start, status) "
-                        "VALUES (%s, %s, %s, %s, 'pending') RETURNING reminder_id",
-                        ("nolan", stable_event_id, event_summary, event_dt)
-                    )
-                    row = await cur.fetchone()
-                    if row:
-                        reminder_id = row[0]
-        except Exception as e:
-            logger.error("Failed to create reminder record: %s", e)
-            return f"Failed to create reminder record: {e}"
+                        # No blocking duplicate found — insert new record
+                        await cur.execute(
+                            "INSERT INTO reminder_acknowledgments "
+                            "(user_id, event_id, event_summary, event_start, status, last_sent_at) "
+                            "VALUES (%s, %s, %s, %s, 'pending', NOW()) RETURNING reminder_id",
+                            ("nolan", stable_event_id, event_summary, event_dt)
+                        )
+                        row = await cur.fetchone()
+                        if row:
+                            local_reminder_id = row[0]
+            except Exception as e:
+                logger.error("Failed to create reminder record: %s", e)
+                return f"Failed to create reminder record: {e}"
 
-        if not reminder_id:
+        if not local_reminder_id:
             return "Failed to get reminder ID"
 
         # Send message with inline buttons
-        buttons = [
-            ("Got it ✓", f"ack:{reminder_id}"),
-            ("Snooze 10 min", f"snooze:{reminder_id}"),
-            ("Dismiss", f"dismiss:{reminder_id}")
-        ]
-
         keyboard = {
             "inline_keyboard": [
-                [{"text": label, "callback_data": data} for label, data in buttons]
+                [
+                    {"text": "Got it ✓", "callback_data": f"ack:{local_reminder_id}"},
+                    {"text": "Snooze 10 min", "callback_data": f"snooze:{local_reminder_id}"},
+                    {"text": "Dismiss", "callback_data": f"dismiss:{local_reminder_id}"},
+                ]
             ]
         }
 
