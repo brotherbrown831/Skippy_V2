@@ -162,7 +162,7 @@ async def drain_notification_queue() -> None:
                     """
                     SELECT queue_id, tool_name, params
                     FROM notification_queue
-                    WHERE status = 'pending' AND send_at <= NOW()
+                    WHERE status IN ('pending', 'failed') AND send_at <= NOW()
                     ORDER BY send_at ASC
                     LIMIT 20
                     """
@@ -176,27 +176,33 @@ async def drain_notification_queue() -> None:
 
                 for queue_id, tool_name, params in rows:
                     try:
+                        result = None
                         if tool_name == "telegram":
                             from skippy.tools.telegram import _deliver_telegram
-                            await _deliver_telegram(**params)
+                            result = await _deliver_telegram(**params)
 
                         elif tool_name == "telegram_reminder":
                             # Re-invoke the full tool with is_critical=True to bypass quiet check
                             from skippy.tools.telegram import send_telegram_message_with_reminder_buttons
-                            send_telegram_message_with_reminder_buttons.invoke(
+                            result = send_telegram_message_with_reminder_buttons.invoke(
                                 {**params, "is_critical": True}
                             )
 
                         elif tool_name == "ha_push":
                             from skippy.tools.home_assistant import _deliver_ha_push
-                            await _deliver_ha_push(**params)
+                            result = await _deliver_ha_push(**params)
 
                         elif tool_name == "sms":
                             from skippy.tools.home_assistant import _deliver_sms
-                            await _deliver_sms(**params)
+                            result = await _deliver_sms(**params)
 
                         else:
                             logger.warning("Unknown queued tool: %s", tool_name)
+
+                        # Check for failure strings returned by tools (they don't raise exceptions)
+                        failed_keywords = ("Failed", "Error", "timed out", "not configured", "No Telegram")
+                        if result and any(kw in str(result) for kw in failed_keywords):
+                            raise RuntimeError(str(result))
 
                         await cur.execute(
                             "UPDATE notification_queue SET status = 'sent', sent_at = NOW() WHERE queue_id = %s",
@@ -235,6 +241,7 @@ async def follow_up_pending_reminders() -> None:
     try:
         async with get_db_connection() as conn:
             async with conn.cursor() as cur:
+                min_gap = timedelta(minutes=FOLLOW_UP_MIN_GAP_MINUTES)
                 await cur.execute(
                     """
                     SELECT reminder_id, event_id, event_summary, event_start, retry_count
@@ -244,14 +251,14 @@ async def follow_up_pending_reminders() -> None:
                       AND (snoozed_until IS NULL OR snoozed_until < NOW())
                       AND event_start > NOW()
                       AND event_start <= %s
-                      AND (last_sent_at IS NULL OR last_sent_at <= NOW() - INTERVAL %s)
+                      AND (last_sent_at IS NULL OR last_sent_at <= NOW() - %s)
                       AND retry_count < %s
                     ORDER BY event_start
                     """,
                     (
                         "nolan",
                         lookahead,
-                        f"{FOLLOW_UP_MIN_GAP_MINUTES} minutes",
+                        min_gap,
                         FOLLOW_UP_MAX_RETRIES,
                     ),
                 )
