@@ -123,6 +123,27 @@ def _build_predefined_routines() -> list:
             }
         )
 
+    # Email check
+    email_trigger = _create_cron_trigger_from_time(settings.email_check_time)
+    if email_trigger:
+        routines.append(
+            {
+                "task_id": "email-check",
+                "name": "Morning Email Check",
+                "prompt": (
+                    "Use check_inbox to fetch the latest emails from Nolan's Gmail inbox. "
+                    "Review them and identify any that are genuinely important — things like: "
+                    "bills, deadlines, time-sensitive requests, messages from real people (not newsletters/marketing), "
+                    "security alerts, or anything that requires action. "
+                    "If you find important emails, send a Telegram message summarizing them — one line per email "
+                    "with sender, subject, and why it matters. Be concise and skip the fluff. "
+                    "If there's nothing worth flagging, do NOT send a message — silence is fine. "
+                    "Use send_telegram_message if you do need to notify."
+                ),
+                "trigger": email_trigger,
+            }
+        )
+
     # Upcoming event check (always enabled, uses interval from config)
     routines.append(
         {

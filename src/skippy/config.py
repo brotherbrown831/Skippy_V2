@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     evening_summary_time: str = "22:00"
     google_contacts_sync_time: str = "02:00"
     people_importance_recalc_time: str = "03:00"
+    email_check_time: str = "05:00"
 
     # Telegram
     telegram_bot_token: str = ""
@@ -77,6 +78,7 @@ class Settings(BaseSettings):
             "evening_summary_time",
             "google_contacts_sync_time",
             "people_importance_recalc_time",
+            "email_check_time",
         ]
 
         time_pattern = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
