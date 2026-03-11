@@ -47,26 +47,26 @@ def _decode_body(payload: dict) -> str:
 
 
 @tool
-def check_inbox(max_results: int = 5) -> str:
-    """Check for recent unread emails in the user's Gmail inbox. Use this when
-    the user asks about new emails, unread messages, or what's in their inbox.
+def check_inbox(max_results: int = 20) -> str:
+    """Check recent emails in the user's Gmail inbox (both read and unread).
+    Use this when the user asks about emails, what's in their inbox, or recent messages.
 
     Args:
-        max_results: Maximum number of emails to return (default 5, max 20).
+        max_results: Maximum number of emails to return (default 20, max 50).
     """
     try:
         service = _get_gmail_service()
-        max_results = min(max_results, 20)
+        max_results = min(max_results, 50)
 
         results = service.users().messages().list(
             userId="me",
-            q="is:unread",
+            labelIds=["INBOX"],
             maxResults=max_results,
         ).execute()
 
         messages = results.get("messages", [])
         if not messages:
-            return "No unread emails in your inbox."
+            return "No emails in your inbox."
 
         lines = []
         for msg_meta in messages:
@@ -77,22 +77,24 @@ def check_inbox(max_results: int = 5) -> str:
             headers = _parse_headers(msg.get("payload", {}).get("headers", []),
                                      "From", "Subject", "Date")
             snippet = msg.get("snippet", "")
+            label_ids = msg.get("labelIds", [])
+            read_status = "UNREAD" if "UNREAD" in label_ids else "read"
             lines.append(
-                f"- From: {headers.get('From', '?')} | "
+                f"- [{read_status}] From: {headers.get('From', '?')} | "
                 f"Subject: {headers.get('Subject', '(no subject)')} | "
                 f"Date: {headers.get('Date', '?')}\n"
                 f"  Preview: {snippet}\n"
                 f"  [ID: {msg_meta['id']}]"
             )
 
-        return f"Unread emails ({len(messages)}):\n\n" + "\n\n".join(lines)
+        return f"Inbox ({len(messages)} emails):\n\n" + "\n\n".join(lines)
     except Exception as e:
         logger.error("Failed to check inbox: %s", e)
         return f"Error checking inbox: {e}"
 
 
 @tool
-def search_emails(query: str, max_results: int = 5) -> str:
+def search_emails(query: str, max_results: int = 20) -> str:
     """Search Gmail using Gmail query syntax. Use this when the user asks to
     find a specific email, emails from someone, or about a topic.
 
@@ -105,11 +107,11 @@ def search_emails(query: str, max_results: int = 5) -> str:
 
     Args:
         query: Gmail search query string.
-        max_results: Maximum number of results (default 5, max 20).
+        max_results: Maximum number of results (default 20, max 50).
     """
     try:
         service = _get_gmail_service()
-        max_results = min(max_results, 20)
+        max_results = min(max_results, 50)
 
         results = service.users().messages().list(
             userId="me",
