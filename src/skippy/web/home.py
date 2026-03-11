@@ -1491,6 +1491,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         .card.calendar { --accent-color: #3B82F6; }
         .card.reminders { --accent-color: #10B981; }
         .card.scheduled { --accent-color: #EF4444; }
+        .card.chat-history { --accent-color: #06B6D4; }
 
         /* ============================================================================
            MODAL DIALOGS
@@ -2175,6 +2176,20 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                     </div>
                 </div>
                 <div class="card-button">View Jobs</div>
+            </a>
+
+            <!-- Chat History Card -->
+            <a href="/chat-history" class="card chat-history">
+                <div class="card-icon">💬</div>
+                <h2>Chat History</h2>
+                <p>Browse recent messages across all conversations</p>
+                <div class="card-stats">
+                    <div class="stat">
+                        <span class="stat-label">Sources</span>
+                        <span class="stat-value">Telegram / Web / Voice</span>
+                    </div>
+                </div>
+                <div class="card-button">View History</div>
             </a>
 
             <!-- Database Admin Card -->

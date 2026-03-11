@@ -139,9 +139,10 @@ def _format_event_with_date(event: dict) -> str:
 
 @tool
 async def get_ics_todays_events() -> str:
-    """Get today's events from the ICS calendar feed (e.g., TeamSnap sports schedule).
-    Use this when the user asks what's on their schedule today or what sports/activities
-    they have scheduled for today."""
+    """Get today's events from the ICS calendar feed (TeamSnap sports schedule).
+    ALWAYS call this alongside get_todays_events whenever the user asks about their
+    schedule, today's events, or what they have going on — never rely on Google
+    Calendar alone."""
     try:
         ics_bytes = await _fetch_ics_calendar()
 
@@ -166,9 +167,10 @@ async def get_ics_todays_events() -> str:
 
 @tool
 async def get_ics_upcoming_events(days: int = 7) -> str:
-    """Get upcoming events from the ICS calendar feed for the next N days.
-    Use this when asking about upcoming sports games, activities, or events from
-    the secondary calendar. The days parameter controls how far ahead to look (defaults to 7)."""
+    """Get upcoming events from the ICS calendar feed (TeamSnap) for the next N days.
+    ALWAYS call this alongside get_upcoming_events whenever the user asks about upcoming
+    schedule or plans — never rely on Google Calendar alone. The days parameter controls
+    how far ahead to look (defaults to 7)."""
     try:
         ics_bytes = await _fetch_ics_calendar()
 

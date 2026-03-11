@@ -22,8 +22,8 @@ SCOPES = [
 
 # Use the directory the script is in (works wherever you copy it)
 SCRIPT_DIR = Path(__file__).parent
-CLIENT_SECRETS = SCRIPT_DIR / "google-oauth.json"
-TOKEN_FILE = SCRIPT_DIR / "google-token.json"
+CLIENT_SECRETS = SCRIPT_DIR.parent / "credentials" / "google-oauth.json"
+TOKEN_FILE = SCRIPT_DIR.parent / "credentials" / "google-token.json"
 
 
 def main():
@@ -37,7 +37,7 @@ def main():
     print()
 
     flow = InstalledAppFlow.from_client_secrets_file(str(CLIENT_SECRETS), SCOPES)
-    creds = flow.run_local_server(port=0)
+    creds = flow.run_console()
 
     token_data = {
         "token": creds.token,

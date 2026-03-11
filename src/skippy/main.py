@@ -26,6 +26,7 @@ from skippy.web.tasks import router as tasks_router
 from skippy.web.calendar import router as calendar_router
 from skippy.web.reminders import router as reminders_router
 from skippy.web.scheduled import router as scheduled_router
+from skippy.web.chat_history import router as chat_history_router
 
 logger = logging.getLogger("skippy")
 
@@ -132,6 +133,7 @@ app.include_router(tasks_router)
 app.include_router(calendar_router)
 app.include_router(reminders_router)
 app.include_router(scheduled_router)
+app.include_router(chat_history_router)
 
 
 # --- Endpoints ---
